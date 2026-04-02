@@ -1,0 +1,60 @@
+=========================
+Node / Electron
+=========================
+
+node_modules/
+dist/
+build/
+out/
+.log
+npm-debug.log
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+Electron build artifacts
+
+*.asar
+release/
+app-release/
+
+=========================
+OS junk
+=========================
+
+.DS_Store
+Thumbs.db
+
+=========================
+Environment / secrets
+=========================
+
+.env
+.env.*
+!.env.example
+
+=========================
+Editor / IDE
+=========================
+
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+=========================
+Temp / misc
+=========================
+
+tmp/
+temp/
+.cache/
+
+=========================
+Conversations (your exports)
+=========================
+
+Conversation/
+Conversation/**
