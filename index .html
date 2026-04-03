@@ -101,20 +101,23 @@
 
       function getConversationMessages(conversation) {
           var messages = [];
+          if (!conversation || !conversation.mapping || !conversation.current_node) return messages;
           var currentNode = conversation.current_node;
           while (currentNode != null) {
               var node = conversation.mapping[currentNode];
+              if (!node) break;
+              var metadata = (node && node.message && node.message.metadata) || {};
               if (
                   node.message &&
                   node.message.content &&
                   node.message.content.parts &&
                   node.message.content.parts.length > 0 &&
-                  (node.message.author.role !== "system"  || node.message.metadata.is_user_system_message)
+                  (node.message.author.role !== "system"  || metadata.is_user_system_message)
               ) {
-                  author = node.message.author.role;
+                  var author = node.message.author.role;
                   if (author === "assistant" || author === "tool") {
                       author = "ChatGPT";
-                  } else if (author === "system" && node.message.metadata.is_user_system_message) {
+                  } else if (author === "system" && metadata.is_user_system_message) {
                       author = "Custom user info"
                   }
                   if (node.message.content.content_type == "text" || node.message.content.content_type == "multimodal_text") {
@@ -134,21 +137,20 @@
                         if (part.video_container_asset_pointer) {
                           parts.push({asset: part.video_container_asset_pointer});
                         }
-                        for (var j = 0; j < part.frames_asset_pointers.length; j++) {
-                          parts.push({asset: part.frames_asset_pointers[j]});
+                        var frames = part.frames_asset_pointers || [];
+                        for (var j = 0; j < frames.length; j++) {
+                          parts.push({asset: frames[j]});
                         }
                       }
                     }
                     if (parts.length > 0) {
-                      var timestamp = node.message.create_time
-                        ? new Date(node.message.create_time * 1000).toLocaleString()
+                      var timestampRaw = Number(node.message.create_time) || 0;
+                      var model = metadata.model_slug || metadata.model || null;
+                      var timestamp = timestampRaw
+                        ? new Date(timestampRaw * 1000).toLocaleString()
                         : null;
 
-                      var model =
-                        node.message.metadata?.model_slug ||
-                        node.message.metadata?.model ||
-                        null;
-                      messages.push({ author, parts: parts, timestamp, model });
+                      messages.push({ author, parts: parts, timestamp, timestampRaw, model });
                     }
                   }
               }
@@ -161,47 +163,75 @@
           var root = document.getElementById("root");
           root.innerHTML = '';
           assetsJson = assets || {};
-          if (!dataArray) return;
+          if (!Array.isArray(dataArray) || dataArray.length === 0) return;
+
+          var allMessages = [];
           for (var i = 0; i < dataArray.length; i++) {
               var conversation = dataArray[i];
+              if (!conversation) continue;
               var messages = getConversationMessages(conversation);
-              var div = document.createElement("div");
-              div.className = "conversation";
-              div.innerHTML = "<h4>" + (conversation.title||'Untitled') + "</h4>";
+              var conversationTitle = conversation.title || "Untitled";
+              var conversationKey = conversation.conversation_id || conversation.id || conversationTitle;
               for (var j = 0; j < messages.length; j++) {
-                  var message = document.createElement("pre");
-                  message.className = "message";
-                  message.innerHTML = `
-                    <div class="message-header">
-                      <span class="author">${messages[j].author}</span>
-                      <span class="meta">
-                        ${messages[j].model ? messages[j].model : ""}
-                        ${messages[j].timestamp ? " • " + messages[j].timestamp : ""}
-                      </span>
-                    </div>
-                  `;
-                  if (messages[j].parts) {
-                    for (var k = 0; k < messages[j].parts.length; k++) {
-                      var part = messages[j].parts[k];
-                      if (part.text) {
-                        message.innerHTML += `<div>${part.text}</div>`;
-                      } else if (assetsJson) {
-                        if (part.transcript) {
-                          message.innerHTML += `<div>[Transcript]: ${part.transcript}</div>`;
-                        } else if (part.asset) {
-                          var link = assetsJson[part.asset.asset_pointer];
-                          if (link) {
-                            message.innerHTML += `<div>[File]: <a href="${link}">${link}</a></div>`;
-                          } else {
-                            message.innerHTML += `<div>[File]: -Deleted-</div>`;
-                          }
-                        }
+                allMessages.push({
+                  author: messages[j].author,
+                  parts: messages[j].parts,
+                  timestamp: messages[j].timestamp,
+                  timestampRaw: Number(messages[j].timestampRaw) || 0,
+                  model: messages[j].model,
+                  conversationTitle: conversationTitle,
+                  conversationKey: conversationKey
+                });
+              }
+          }
+
+          allMessages.sort(function(a, b) {
+              return a.timestampRaw - b.timestampRaw;
+          });
+
+          var currentConversationKey = null;
+          var currentConversationDiv = null;
+          for (var m = 0; m < allMessages.length; m++) {
+              var item = allMessages[m];
+              if (item.conversationKey !== currentConversationKey) {
+                currentConversationKey = item.conversationKey;
+                currentConversationDiv = document.createElement("div");
+                currentConversationDiv.className = "conversation";
+                currentConversationDiv.innerHTML = "<h4>" + item.conversationTitle + "</h4>";
+                root.appendChild(currentConversationDiv);
+              }
+
+              var message = document.createElement("pre");
+              message.className = "message";
+              message.innerHTML = `
+                <div class="message-header">
+                  <span class="author">${item.author}</span>
+                  <span class="meta">
+                    ${item.model ? item.model : ""}
+                    ${item.timestamp ? " • " + item.timestamp : ""}
+                  </span>
+                </div>
+              `;
+              if (item.parts) {
+                for (var k = 0; k < item.parts.length; k++) {
+                  var part = item.parts[k];
+                  if (part.text) {
+                    message.innerHTML += `<div>${part.text}</div>`;
+                  } else if (assetsJson) {
+                    if (part.transcript) {
+                      message.innerHTML += `<div>[Transcript]: ${part.transcript}</div>`;
+                    } else if (part.asset) {
+                      var link = assetsJson[part.asset.asset_pointer];
+                      if (link) {
+                        message.innerHTML += `<div>[File]: <a href="${link}">${link}</a></div>`;
+                      } else {
+                        message.innerHTML += `<div>[File]: -Deleted-</div>`;
                       }
                     }
                   }
-                  div.appendChild(message);
+                }
               }
-              root.appendChild(div);
+              currentConversationDiv.appendChild(message);
           }
       }
 
@@ -276,3 +306,4 @@
     <div id="root"></div>
   </body>
 </html>
+
