@@ -26,7 +26,22 @@
         padding: 20px;
         background-color: #f3f3f3;
       }
+
+      .message-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        opacity: 0.7;
+        margin-bottom: 6px;
+      }
+
+      .meta {
+        font-style: italic;
+      }
+
       .message {
+        padding: 8px;
+        border-radius: 6px;
         white-space: pre-wrap;
         margin: 20px 0;
       }
@@ -125,7 +140,15 @@
                       }
                     }
                     if (parts.length > 0) {
-                      messages.push({ author, parts: parts });
+                      var timestamp = node.message.create_time
+                        ? new Date(node.message.create_time * 1000).toLocaleString()
+                        : null;
+
+                      var model =
+                        node.message.metadata?.model_slug ||
+                        node.message.metadata?.model ||
+                        null;
+                      messages.push({ author, parts: parts, timestamp, model });
                     }
                   }
               }
@@ -148,7 +171,15 @@
               for (var j = 0; j < messages.length; j++) {
                   var message = document.createElement("pre");
                   message.className = "message";
-                  message.innerHTML = `<div class="author">${messages[j].author}</div>`
+                  message.innerHTML = `
+                    <div class="message-header">
+                      <span class="author">${messages[j].author}</span>
+                      <span class="meta">
+                        ${messages[j].model ? messages[j].model : ""}
+                        ${messages[j].timestamp ? " • " + messages[j].timestamp : ""}
+                      </span>
+                    </div>
+                  `;
                   if (messages[j].parts) {
                     for (var k = 0; k < messages[j].parts.length; k++) {
                       var part = messages[j].parts[k];
