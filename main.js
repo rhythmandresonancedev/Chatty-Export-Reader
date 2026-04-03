@@ -11,6 +11,9 @@ function createWindow () {
       contextIsolation: true,
       nodeIntegration: false
     }
+
+    
+
   })
 
   // Prevent in-app navigation to external pages; open externals in default browser
@@ -20,6 +23,7 @@ function createWindow () {
   // Previously we forwarded these to the external browser; to avoid creating
   // another window, we simply deny them now so nothing else opens automatically.
   win.webContents.setWindowOpenHandler(() => {
+    shell.openExternal(url);
     return { action: 'deny' };
   });
 
@@ -30,15 +34,19 @@ function createWindow () {
       const parsed = new URL(url);
       if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
         event.preventDefault();
-        // do not open externally; swallow the navigation
+        //shell.openExternal(url); do not open externally; swallow the navigation
       }
     } catch (e) {
       // ignore malformed URLs
     }
   });
 
+  
+
   win.loadFile('index .html')
 }
+
+app.disableHardwareAcceleration();
 
 app.whenReady().then(() => {
   createWindow()
