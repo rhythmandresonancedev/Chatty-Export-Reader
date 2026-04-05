@@ -1,4 +1,4 @@
-<html>
+﻿<html>
   <head>
     <title>ChatGPT Data Export Reader</title>
     <style>
@@ -201,15 +201,13 @@
                 root.appendChild(currentConversationDiv);
               }
 
-              var message = document.createElement("pre");
+              var message = document.createElement("div");
               message.className = "message";
               message.innerHTML = `
                 <div class="message-header">
                   <span class="author">${item.author}</span>
-                  <span class="meta">
-                    ${item.model ? item.model : ""}
-                    ${item.timestamp ? " • " + item.timestamp : ""}
-                  </span>
+                  <span class="timestamp">${item.timestamp ? item.timestamp : ""}</span>
+                  <span class="model">${item.model ? item.model : ""}</span>
                 </div>
               `;
               if (item.parts) {
