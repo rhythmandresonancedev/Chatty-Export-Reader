@@ -1,10 +1,12 @@
 ﻿<html>
   <head>
-    <title>ChatGPT Data Export Reader</title>
+    <title>ChatGPT Conversation Reader</title>
     <style>
       body {
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        background: #222222;
+        font-family: 'SF Pro Display',-apple-system-headline, system-ui,'Segoe UI',Roboto, Helvetica, Arial, sans-serif;
+        background: url('./images/background.png') center / cover no-repeat fixed;
+        
+        color: #DDD;
         margin: 0;
         padding: 20px;
         text-align: left;
@@ -15,6 +17,8 @@
       .content
       {
         max-width: 960;
+        min-height: 100%;
+        align-content: center;
       }
 
       #controls {
@@ -26,40 +30,69 @@
       }
       h4 {
         margin: 0;
+        font-size: 1.5rem;
+        letter-spacing: 0.02em;
+        color: #EEE;
+        text-align: center;
+        margin-bottom: 40px;
       }
+
+      h4::after {
+        content: "";
+        display: block;
+        width: 3em;
+        height: 1px;
+        background:  #DDD;
+        opacity: 15%;
+        margin: 15px auto 0;
+      }
+
       #root {
         display: flex;
         flex-direction: column;
         gap: 20px;
       }
       .conversation {
-        border: 1px solid black;
         padding: 20px;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        background: #222222;
+        border-radius: 5px;
+        margin-bottom: 20px;
       }
 
       .message-header {
+        font-size: .8rem;
         display: flex;
-        justify-content: space-between;
-        font-size: 0.75rem;
-        opacity: 0.7;
+        justify-content: left;
+        opacity: 25%;
         margin-bottom: 6px;
-      }
-
-      .meta {
-        font-style: italic;
+        column-gap: 10px;
       }
 
       .message {
         padding: 8px;
-        border-radius: 6px;
+        border-radius: 2.5px;
+        letter-spacing: 0.02em;
         white-space: pre-wrap;
         margin: 20px 0;
-        text-align: left;
+        font-size: 1.1rem;
+        opacity: 90%;
       }
 
-      .message.user {
-        background: #8abe8a;
-        color: #111;
+      .message.user .message-body{
+        color: #abd4ee;
+        font-family: "Playpen Sans", cursive;
+        font-weight: 300;
+        font-style: normal;
+      }
+
+      .message.AI .message-body{
+        color: #cccc9b;
+        font-family: "Play", sans-serif;
+        font-weight: 300;
+        font-style: normal;
       }
 
       .author {
@@ -69,6 +102,14 @@
       .author::first-letter {
         text-transform: uppercase;
       }
+
+      #openFileBtn {
+        background: #222222;
+        color: #DDD;
+        padding: 20px;
+        border-radius: 5px;
+      }
+
       /* Loading overlay */
       #loadingOverlay {
         position: fixed;
@@ -184,6 +225,16 @@
           }
       }
 
+      function isSafeLink(url) {
+          if (typeof url !== "string" || url.length === 0) return false;
+          try {
+            var parsed = new URL(url, window.location.href);
+            return parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "file:";
+          } catch (e) {
+            return false;
+          }
+      }
+
       function renderData(dataArray, assets) {
           var root = document.getElementById("root");
           root.innerHTML = '';
@@ -227,44 +278,77 @@
                 currentConversationKey = item.conversationKey;
                 currentConversationDiv = document.createElement("div");
                 currentConversationDiv.className = "conversation";
-                currentConversationDiv.innerHTML = "<h4>" + item.conversationTitle + "</h4>";
+                var heading = document.createElement("h4");
+                heading.textContent = item.conversationTitle;
+                currentConversationDiv.appendChild(heading);
                 root.appendChild(currentConversationDiv);
               }
 
               var message = document.createElement("div");
+
               var roleClass = "";
               if (item.author === "user") {
                 roleClass = " user";
               } else if (item.author === "ChatGPT") {
-                roleClass = " ChatGPT";
+                roleClass = " AI";
               }
               message.className = "message" + roleClass;
-              message.innerHTML = `
-                <div class="message-header">
-                  <span class="author">${item.author}</span>
-                  <span class="timestamp">${item.timestamp ? item.timestamp : ""}</span>
-                  <span class="model">${item.model ? item.model : ""}</span>
-                </div>
-              `;
+              var header = document.createElement("div");
+              header.className = "message-header";
+
+              var author = document.createElement("span");
+              author.className = "author";
+              author.textContent = item.author;
+              header.appendChild(author);
+
+              var timestamp = document.createElement("span");
+              timestamp.className = "timestamp";
+              timestamp.textContent = item.timestamp ? item.timestamp : "";
+              header.appendChild(timestamp);
+
+              var model = document.createElement("span");
+              model.className = "model";
+              model.textContent = item.model ? item.model : "";
+              header.appendChild(model);
+
+              message.appendChild(header);
+
+
+              var body = document.createElement("div");
+              body.className = "message-body";
               if (item.parts) {
                 for (var k = 0; k < item.parts.length; k++) {
                   var part = item.parts[k];
                   if (part.text) {
-                    message.innerHTML += `<div>${part.text}</div>`;
+                    var textPart = document.createElement("div");
+                    textPart.textContent = part.text;
+                    body.appendChild(textPart);
                   } else if (assetsJson) {
                     if (part.transcript) {
-                      message.innerHTML += `<div>[Transcript]: ${part.transcript}</div>`;
+                      var transcriptPart = document.createElement("div");
+                      transcriptPart.textContent = "[Transcript]: " + part.transcript;
+                      body.appendChild(transcriptPart);
                     } else if (part.asset) {
                       var link = assetsJson[part.asset.asset_pointer];
-                      if (link) {
-                        message.innerHTML += `<div>[File]: <a href="${link}">${link}</a></div>`;
+                      var filePart = document.createElement("div");
+                      if (link && isSafeLink(link)) {
+                        filePart.appendChild(document.createTextNode("[File]: "));
+                        var anchor = document.createElement("a");
+                        anchor.textContent = link;
+                        anchor.setAttribute("href", link);
+                        anchor.setAttribute("target", "_blank");
+                        anchor.setAttribute("rel", "noopener noreferrer");
+                        filePart.appendChild(anchor);
                       } else {
-                        message.innerHTML += `<div>[File]: -Deleted-</div>`;
+                        filePart.textContent = "[File]: -Deleted-";
                       }
+                      body.appendChild(filePart);
                     }
                   }
                 }
               }
+              message.appendChild(body);
+
               currentConversationDiv.appendChild(message);
           }
       }
@@ -317,7 +401,7 @@
 
           // try to load default conversations from the local Conversation folder
           if (window.api && window.api.loadDefault) {
-            showLoading('Loading default conversations...');
+            showLoading('Loading default conversation...');
             window.api.loadDefault().then(res => {
               if (!res || res.error || !res.data) return;
               var parsed = res.data;
@@ -336,6 +420,12 @@
           }
       });
     </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair:ital,opsz,wght@0,5..1200,300..900;1,5..1200,300..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Schoolbell&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playpen+Sans:wght@100..800&display=swap" rel="stylesheet">
   </head>
   <body>
     <div class="content">

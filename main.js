@@ -26,9 +26,9 @@ function buildAppMenu() {
     }
   ];
 
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
-  importMenuItem = menu.getMenuItemById('importConversation');
+  //const menu = Menu.buildFromTemplate(template);
+  //Menu.setApplicationMenu(menu);
+  //importMenuItem = menu.getMenuItemById('importConversation');
 }
 
 function createWindow () {
