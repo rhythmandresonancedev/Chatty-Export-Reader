@@ -3,9 +3,20 @@
     <title>ChatGPT Data Export Reader</title>
     <style>
       body {
-        margin: 20px;
-        font-family: sans-serif;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #222222;
+        margin: 0;
+        padding: 20px;
+        text-align: left;
+        display: flex;
+        justify-content: center;
       }
+
+      .content
+      {
+        max-width: 960;
+      }
+
       #controls {
         margin-bottom: 12px;
       }
@@ -24,7 +35,6 @@
       .conversation {
         border: 1px solid black;
         padding: 20px;
-        background-color: #f3f3f3;
       }
 
       .message-header {
@@ -44,7 +54,13 @@
         border-radius: 6px;
         white-space: pre-wrap;
         margin: 20px 0;
+        text-align: left;
       }
+
+      .message.user {
+        background: #8abe8a;
+      }
+
       .author {
         font-weight: bold;
         margin-bottom: 4px;
@@ -202,7 +218,13 @@
               }
 
               var message = document.createElement("div");
-              message.className = "message";
+              var roleClass = "";
+              if (item.author === "user") {
+                roleClass = " user";
+              } else if (item.author === "ChatGPT") {
+                roleClass = " ChatGPT";
+              }
+              message.className = "message" + roleClass;
               message.innerHTML = `
                 <div class="message-header">
                   <span class="author">${item.author}</span>
@@ -292,16 +314,18 @@
     </script>
   </head>
   <body>
-    <div id="controls">
-      <button id="openFileBtn">Open Export File</button>
-    </div>
-    <div id="loadingOverlay">
-      <div class="loading-box">
-        <div class="spinner" aria-hidden="true"></div>
-        <div class="loading-text">Loading...</div>
+    <div class="content">
+      <div id="controls">
+        <button id="openFileBtn">Open Export File</button>
       </div>
+      <div id="loadingOverlay">
+        <div class="loading-box">
+          <div class="spinner" aria-hidden="true"></div>
+          <div class="loading-text">Loading...</div>
+        </div>
+      </div>
+      <div id="root"></div>
     </div>
-    <div id="root"></div>
   </body>
 </html>
 
