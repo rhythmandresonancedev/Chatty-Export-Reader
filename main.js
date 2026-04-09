@@ -1,9 +1,38 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+let mainWindow = null;
+let importMenuItem = null;
+
+function buildAppMenu() {
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          id: 'importConversation',
+          label: 'Import Conversation',
+          visible: false,
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('menu:importFile');
+            }
+          }
+        },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+  importMenuItem = menu.getMenuItemById('importConversation');
+}
+
 function createWindow () {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1000,
     height: 800,
     webPreferences: {
@@ -22,14 +51,14 @@ function createWindow () {
   // Deny any attempt to open a new window from the renderer.
   // Previously we forwarded these to the external browser; to avoid creating
   // another window, we simply deny them now so nothing else opens automatically.
-  win.webContents.setWindowOpenHandler(() => {
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
 
   // Prevent navigation to external http/https addresses. This stops auto-redirects
   // that would otherwise open a new tab/window in the default browser.
-  win.webContents.on('will-navigate', (event, url) => {
+  mainWindow.webContents.on('will-navigate', (event, url) => {
     try {
       const parsed = new URL(url);
       if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
@@ -43,12 +72,13 @@ function createWindow () {
 
   
 
-  win.loadFile('index .html')
+  mainWindow.loadFile('index .html')
 }
 
 app.disableHardwareAcceleration();
 
 app.whenReady().then(() => {
+  buildAppMenu()
   createWindow()
 
   app.on('activate', function () {
@@ -93,4 +123,12 @@ ipcMain.handle('file:loadDefault', async () => {
   } catch (err) {
     return { error: err.message };
   }
+});
+
+
+ipcMain.on('menu:setImportVisible', (event, isVisible) => {
+  if (!importMenuItem) return;
+  importMenuItem.visible = !!isVisible;
+  const menu = Menu.getApplicationMenu();
+  if (menu) Menu.setApplicationMenu(menu);
 });

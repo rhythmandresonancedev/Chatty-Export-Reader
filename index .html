@@ -59,6 +59,7 @@
 
       .message.user {
         background: #8abe8a;
+        color: #111;
       }
 
       .author {
@@ -175,11 +176,24 @@
           return messages.reverse();
       }
 
+      function setImportUiState(hasConversations) {
+          var controls = document.getElementById('controls');
+          if (controls) controls.style.display = hasConversations ? 'none' : 'block';
+          if (window.api && window.api.setImportMenuVisible) {
+            window.api.setImportMenuVisible(!!hasConversations);
+          }
+      }
+
       function renderData(dataArray, assets) {
           var root = document.getElementById("root");
           root.innerHTML = '';
           assetsJson = assets || {};
-          if (!Array.isArray(dataArray) || dataArray.length === 0) return;
+          if (!Array.isArray(dataArray) || dataArray.length === 0) {
+            setImportUiState(false);
+            return;
+          }
+
+          setImportUiState(true);
 
           var allMessages = [];
           for (var i = 0; i < dataArray.length; i++) {
@@ -256,40 +270,50 @@
       }
 
       // wire open button and default load with loading overlay
-     window.addEventListener('DOMContentLoaded', function() {
+      window.addEventListener('DOMContentLoaded', function() {
+          async function importAndRender() {
+            if (!window.api || !window.api.openFile) {
+              alert('File open API not available');
+              return;
+            }
+            showLoading('Loading...');
+            try {
+              var res = await window.api.openFile();
+              if (!res) return;
+              if (res.error) {
+                alert('Error loading file: ' + res.error);
+                return;
+              }
+              var parsed = res.data;
+              var toRender = null;
+              var assets = null;
+              if (Array.isArray(parsed)) {
+                toRender = parsed;
+              } else if (parsed && parsed.conversations) {
+                toRender  = parsed.conversations;
+                assets = parsed.assets || null;
+              } else if (parsed) {
+                toRender = [parsed];
+              }
+              renderData(toRender, assets);
+            } catch (e) {
+              console.error(e);
+              alert('Error loading file');
+            } finally {
+              hideLoading();
+            }
+          }
+
           var btn = document.getElementById('openFileBtn');
-          btn.addEventListener('click', async function() {
-              if (!window.api || !window.api.openFile) {
-                  alert('File open API not available');
-                  return;
-              }
-              showLoading('Loading...');
-              try {
-                var res = await window.api.openFile();
-                if (!res) return;
-                if (res.error) {
-                  alert('Error loading file: ' + res.error);
-                  return;
-                }
-                var parsed = res.data;
-                var toRender = null;
-                var assets = null;
-                if (Array.isArray(parsed)) {
-                  toRender = parsed;
-                } else if (parsed && parsed.conversations) {
-                  toRender  = parsed.conversations;
-                  assets = parsed.assets || null;
-                } else if (parsed) {
-                  toRender = [parsed];
-                }
-                renderData(toRender, assets);
-              } catch (e) {
-                console.error(e);
-                alert('Error loading file');
-              } finally {
-                hideLoading();
-              }
-          });
+          if (btn) {
+            btn.addEventListener('click', importAndRender);
+          }
+
+          if (window.api && window.api.onImportFromMenu) {
+            window.api.onImportFromMenu(importAndRender);
+          }
+
+          setImportUiState(false);
 
           // try to load default conversations from the local Conversation folder
           if (window.api && window.api.loadDefault) {
@@ -316,7 +340,7 @@
   <body>
     <div class="content">
       <div id="controls">
-        <button id="openFileBtn">Open Export File</button>
+        <button id="openFileBtn">Open Conversation</button>
       </div>
       <div id="loadingOverlay">
         <div class="loading-box">

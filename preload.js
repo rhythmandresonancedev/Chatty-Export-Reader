@@ -6,6 +6,12 @@ contextBridge.exposeInMainWorld('api', {
   },
   loadDefault: async () => {
     return await ipcRenderer.invoke('file:loadDefault');
+  },
+  onImportFromMenu: (callback) => {
+    ipcRenderer.on('menu:importFile', callback);
+  },
+  setImportMenuVisible: (isVisible) => {
+    ipcRenderer.send('menu:setImportVisible', !!isVisible);
   }
 });
 
