@@ -133,6 +133,7 @@
         width: calc(100% - var(--rail-width));
         height: 100vh;
         overflow-y: auto;
+        overflow-x: hidden;
         transition: margin-left 0.2s ease, width 0.2s ease;
         padding: 20px;
       }
@@ -144,8 +145,10 @@
 
       .content {
         max-width: 960px;
+        width: 100%;
         min-height: 100%;
         margin: 0 auto;
+        overflow-x: hidden;
       }
 
       #controls {
@@ -187,6 +190,7 @@
         display: flex;
         flex-direction: column;
         width: 100%;
+        min-width: 0;
         background: #222222;
         border-radius: 5px;
         margin-bottom: 20px;
@@ -206,6 +210,8 @@
         border-radius: 2.5px;
         letter-spacing: 0.02em;
         white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
         margin: 20px 0;
         font-size: 1.1rem;
         opacity: 90%;
