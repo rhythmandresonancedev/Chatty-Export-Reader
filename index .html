@@ -423,7 +423,7 @@
           item.type = 'button';
           item.setAttribute('data-target-id', conversation.id);
           item.innerHTML =
-            '<div class="title">' + escapeHtml(conversation.title) + '</div>' +
+            '<div class="title">' + conversation.number + '. ' + escapeHtml(conversation.title) + '</div>' +
             '<div class="meta">' + formatTimestamp(conversation.timestampRaw) + '</div>';
           threadList.appendChild(item);
         }
@@ -469,8 +469,10 @@
         for (var c = 0; c < conversationsToRender.length; c++) {
           var current = conversationsToRender[c];
           var conversationId = 'conversation-' + c;
+          var conversationNumber = c + 1;
           renderedConversations.push({
             id: conversationId,
+            number: conversationNumber,
             title: current.title,
             timestampRaw: current.sortTimestampRaw
           });
@@ -480,7 +482,7 @@
           currentConversationDiv.id = conversationId;
 
           var heading = document.createElement('h4');
-          heading.textContent = current.title;
+          heading.textContent = conversationNumber + '. ' + current.title;
           currentConversationDiv.appendChild(heading);
 
           root.appendChild(currentConversationDiv);
