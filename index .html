@@ -1,33 +1,162 @@
-﻿<html>
+<html>
   <head>
     <title>ChatGPT Conversation Reader</title>
     <style>
-      body {
-        font-family: 'SF Pro Display',-apple-system-headline, system-ui,'Segoe UI',Roboto, Helvetica, Arial, sans-serif;
-        background: url('./images/background.png') center / cover no-repeat fixed;
-        
-        color: #DDD;
-        margin: 0;
-        padding: 20px;
-        text-align: left;
-        display: flex;
-        justify-content: center;
+      :root {
+        --rail-width: 64px;
+        --sidebar-width: 320px;
       }
 
-      .content
-      {
-        max-width: 960;
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: 'SF Pro Display', -apple-system-headline, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        background: url('./images/background.png') center / cover no-repeat fixed;
+        color: #DDD;
+        margin: 0;
+        text-align: left;
+        height: 100vh;
+        overflow: hidden;
+        
+      }
+
+      #appLayout {
+        display: flex;
+        height: 100vh;
+      }
+
+      #leftNav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        width: var(--rail-width);
+        background: rgba(10, 10, 10, 0.8);
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding-top: 16px;
+        z-index: 30;
+      }
+
+      .nav-icon-btn {
+        width: 40px;
+        height: 40px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.04);
+        color: #DDD;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+
+      .nav-icon-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .nav-icon-btn.active {
+        background: rgba(255, 255, 255, 0.2);
+      }
+
+      .nav-icon-btn svg {
+        width: 20px;
+        height: 20px;
+        fill: currentColor;
+      }
+
+      #threadSidebar {
+        position: fixed;
+        top: 0;
+        left: var(--rail-width);
+        height: 100vh;
+        width: var(--sidebar-width);
+        background: rgba(18, 18, 18, 0.95);
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+        z-index: 25;
+        display: flex;
+        flex-direction: column;
+      }
+
+      #threadSidebar.open {
+        transform: translateX(0);
+      }
+
+      .sidebar-header {
+        padding: 16px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      #threadList {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px;
+      }
+
+      .thread-item {
+        width: 100%;
+        background: transparent;
+        border: none;
+        color: #DDD;
+        text-align: left;
+        padding: 10px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .thread-item:hover {
+        background: rgba(255, 255, 255, 0.09);
+      }
+
+      .thread-item .title {
+        font-size: 0.9rem;
+        line-height: 1.25rem;
+      }
+
+      .thread-item .meta {
+        opacity: 0.6;
+        font-size: 0.75rem;
+        margin-top: 4px;
+      }
+
+      #mainArea {
+        margin-left: var(--rail-width);
+        width: calc(100% - var(--rail-width));
+        height: 100vh;
+        overflow-y: auto;
+        transition: margin-left 0.2s ease, width 0.2s ease;
+        padding: 20px;
+      }
+
+      #mainArea.sidebar-open {
+        margin-left: calc(var(--rail-width) + var(--sidebar-width));
+        width: calc(100% - (var(--rail-width) + var(--sidebar-width)));
+      }
+
+      .content {
+        max-width: 960px;
         min-height: 100%;
-        align-content: center;
+        margin: 0 auto;
       }
 
       #controls {
         margin-bottom: 12px;
       }
+
       button {
         padding: 8px 12px;
         font-size: 14px;
       }
+
       h4 {
         margin: 0;
         font-size: 1.5rem;
@@ -42,7 +171,7 @@
         display: block;
         width: 3em;
         height: 1px;
-        background:  #DDD;
+        background: #DDD;
         opacity: 15%;
         margin: 15px auto 0;
       }
@@ -52,6 +181,7 @@
         flex-direction: column;
         gap: 20px;
       }
+
       .conversation {
         padding: 20px;
         display: flex;
@@ -81,14 +211,14 @@
         opacity: 90%;
       }
 
-      .message.user .message-body{
+      .message.user .message-body {
         color: #abd4ee;
         font-family: "Playpen Sans", cursive;
         font-weight: 300;
         font-style: normal;
       }
 
-      .message.AI .message-body{
+      .message.AI .message-body {
         color: #cccc9b;
         font-family: "Play", sans-serif;
         font-weight: 300;
@@ -99,6 +229,7 @@
         font-weight: bold;
         margin-bottom: 4px;
       }
+
       .author::first-letter {
         text-transform: uppercase;
       }
@@ -120,6 +251,7 @@
         background: rgba(0,0,0,0.4);
         z-index: 9999;
       }
+
       .loading-box {
         background: #fff;
         padding: 18px 22px;
@@ -129,6 +261,7 @@
         align-items: center;
         box-shadow: 0 6px 20px rgba(0,0,0,0.2);
       }
+
       .spinner {
         width: 28px;
         height: 28px;
@@ -137,20 +270,30 @@
         border-top-color: #3b82f6;
         animation: spin 1s linear infinite;
       }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      .loading-text { font-size: 14px; color: #111; }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .loading-text {
+        font-size: 14px;
+        color: #111;
+      }
     </style>
     <script>
-      var jsonData = []
-      var assetsJson = {}
+      var jsonData = [];
+      var assetsJson = {};
+      var renderedConversations = [];
 
-      // Loading overlay helper
       function showLoading(text) {
         var el = document.getElementById('loadingOverlay');
         if (!el) return;
         el.style.display = 'flex';
         if (text) el.querySelector('.loading-text').textContent = text;
       }
+
       function hideLoading() {
         var el = document.getElementById('loadingOverlay');
         if (!el) return;
@@ -158,266 +301,359 @@
       }
 
       function getConversationMessages(conversation) {
-          var messages = [];
-          if (!conversation || !conversation.mapping || !conversation.current_node) return messages;
-          var currentNode = conversation.current_node;
-          while (currentNode != null) {
-              var node = conversation.mapping[currentNode];
-              if (!node) break;
-              var metadata = (node && node.message && node.message.metadata) || {};
-              if (
-                  node.message &&
-                  node.message.content &&
-                  node.message.content.parts &&
-                  node.message.content.parts.length > 0 &&
-                  (node.message.author.role !== "system"  || metadata.is_user_system_message)
-              ) {
-                  var author = node.message.author.role;
-                  if (author === "assistant" || author === "tool") {
-                      author = "ChatGPT";
-                  } else if (author === "system" && metadata.is_user_system_message) {
-                      author = "Custom user info"
+        var messages = [];
+        if (!conversation || !conversation.mapping || !conversation.current_node) return messages;
+        var currentNode = conversation.current_node;
+        while (currentNode != null) {
+          var node = conversation.mapping[currentNode];
+          if (!node) break;
+          var metadata = (node && node.message && node.message.metadata) || {};
+          if (
+            node.message &&
+            node.message.content &&
+            node.message.content.parts &&
+            node.message.content.parts.length > 0 &&
+            (node.message.author.role !== 'system' || metadata.is_user_system_message)
+          ) {
+            var author = node.message.author.role;
+            if (author === 'assistant' || author === 'tool') {
+              author = 'ChatGPT';
+            } else if (author === 'system' && metadata.is_user_system_message) {
+              author = 'Custom user info';
+            }
+
+            if (node.message.content.content_type == 'text' || node.message.content.content_type == 'multimodal_text') {
+              var parts = [];
+              for (var i = 0; i < node.message.content.parts.length; i++) {
+                var part = node.message.content.parts[i];
+                if (typeof part === 'string' && part.length > 0) {
+                  parts.push({ text: part });
+                } else if (part.content_type == 'audio_transcription') {
+                  parts.push({ transcript: part.text });
+                } else if (part.content_type == 'audio_asset_pointer' || part.content_type == 'image_asset_pointer' || part.content_type == 'video_container_asset_pointer') {
+                  parts.push({ asset: part });
+                } else if (part.content_type == 'real_time_user_audio_video_asset_pointer') {
+                  if (part.audio_asset_pointer) {
+                    parts.push({ asset: part.audio_asset_pointer });
                   }
-                  if (node.message.content.content_type == "text" || node.message.content.content_type == "multimodal_text") {
-                    var parts = [];
-                    for (var i = 0; i < node.message.content.parts.length; i++) {
-                      var part = node.message.content.parts[i];
-                      if (typeof part === "string" && part.length > 0) {
-                        parts.push({text: part});
-                      } else if (part.content_type == "audio_transcription") {
-                        parts.push({transcript: part.text});
-                      } else if (part.content_type == "audio_asset_pointer" || part.content_type == "image_asset_pointer" || part.content_type == "video_container_asset_pointer") {
-                        parts.push({asset: part});
-                      } else if (part.content_type == "real_time_user_audio_video_asset_pointer") {
-                        if (part.audio_asset_pointer) {
-                          parts.push({asset: part.audio_asset_pointer});
-                        }
-                        if (part.video_container_asset_pointer) {
-                          parts.push({asset: part.video_container_asset_pointer});
-                        }
-                        var frames = part.frames_asset_pointers || [];
-                        for (var j = 0; j < frames.length; j++) {
-                          parts.push({asset: frames[j]});
-                        }
-                      }
-                    }
-                    if (parts.length > 0) {
-                      var timestampRaw = Number(node.message.create_time) || 0;
-                      var model = metadata.model_slug || metadata.model || null;
-                      var timestamp = timestampRaw
-                        ? new Date(timestampRaw * 1000).toLocaleString()
-                        : null;
-
-                      messages.push({ author, parts: parts, timestamp, timestampRaw, model });
-                    }
+                  if (part.video_container_asset_pointer) {
+                    parts.push({ asset: part.video_container_asset_pointer });
                   }
-              }
-              currentNode = node.parent;
-          }
-          return messages.reverse();
-      }
-
-      function setImportUiState(hasConversations) {
-          var controls = document.getElementById('controls');
-          if (controls) controls.style.display = hasConversations ? 'none' : 'block';
-          if (window.api && window.api.setImportMenuVisible) {
-            window.api.setImportMenuVisible(!!hasConversations);
-          }
-      }
-
-      function isSafeLink(url) {
-          if (typeof url !== "string" || url.length === 0) return false;
-          try {
-            var parsed = new URL(url, window.location.href);
-            return parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "file:";
-          } catch (e) {
-            return false;
-          }
-      }
-
-      function renderData(dataArray, assets) {
-          var root = document.getElementById("root");
-          root.innerHTML = '';
-          assetsJson = assets || {};
-          if (!Array.isArray(dataArray) || dataArray.length === 0) {
-            setImportUiState(false);
-            return;
-          }
-
-          setImportUiState(true);
-
-          var allMessages = [];
-          for (var i = 0; i < dataArray.length; i++) {
-              var conversation = dataArray[i];
-              if (!conversation) continue;
-              var messages = getConversationMessages(conversation);
-              var conversationTitle = conversation.title || "Untitled";
-              var conversationKey = conversation.conversation_id || conversation.id || conversationTitle;
-              for (var j = 0; j < messages.length; j++) {
-                allMessages.push({
-                  author: messages[j].author,
-                  parts: messages[j].parts,
-                  timestamp: messages[j].timestamp,
-                  timestampRaw: Number(messages[j].timestampRaw) || 0,
-                  model: messages[j].model,
-                  conversationTitle: conversationTitle,
-                  conversationKey: conversationKey
-                });
-              }
-          }
-
-          allMessages.sort(function(a, b) {
-              return a.timestampRaw - b.timestampRaw;
-          });
-
-          var currentConversationKey = null;
-          var currentConversationDiv = null;
-          for (var m = 0; m < allMessages.length; m++) {
-              var item = allMessages[m];
-              if (item.conversationKey !== currentConversationKey) {
-                currentConversationKey = item.conversationKey;
-                currentConversationDiv = document.createElement("div");
-                currentConversationDiv.className = "conversation";
-                var heading = document.createElement("h4");
-                heading.textContent = item.conversationTitle;
-                currentConversationDiv.appendChild(heading);
-                root.appendChild(currentConversationDiv);
-              }
-
-              var message = document.createElement("div");
-
-              var roleClass = "";
-              if (item.author === "user") {
-                roleClass = " user";
-              } else if (item.author === "ChatGPT") {
-                roleClass = " AI";
-              }
-              message.className = "message" + roleClass;
-              var header = document.createElement("div");
-              header.className = "message-header";
-
-              var author = document.createElement("span");
-              author.className = "author";
-              author.textContent = item.author;
-              header.appendChild(author);
-
-              var timestamp = document.createElement("span");
-              timestamp.className = "timestamp";
-              timestamp.textContent = item.timestamp ? item.timestamp : "";
-              header.appendChild(timestamp);
-
-              var model = document.createElement("span");
-              model.className = "model";
-              model.textContent = item.model ? item.model : "";
-              header.appendChild(model);
-
-              message.appendChild(header);
-
-
-              var body = document.createElement("div");
-              body.className = "message-body";
-              if (item.parts) {
-                for (var k = 0; k < item.parts.length; k++) {
-                  var part = item.parts[k];
-                  if (part.text) {
-                    var textPart = document.createElement("div");
-                    textPart.textContent = part.text;
-                    body.appendChild(textPart);
-                  } else if (assetsJson) {
-                    if (part.transcript) {
-                      var transcriptPart = document.createElement("div");
-                      transcriptPart.textContent = "[Transcript]: " + part.transcript;
-                      body.appendChild(transcriptPart);
-                    } else if (part.asset) {
-                      var link = assetsJson[part.asset.asset_pointer];
-                      var filePart = document.createElement("div");
-                      if (link && isSafeLink(link)) {
-                        filePart.appendChild(document.createTextNode("[File]: "));
-                        var anchor = document.createElement("a");
-                        anchor.textContent = link;
-                        anchor.setAttribute("href", link);
-                        anchor.setAttribute("target", "_blank");
-                        anchor.setAttribute("rel", "noopener noreferrer");
-                        filePart.appendChild(anchor);
-                      } else {
-                        filePart.textContent = "[File]: -Deleted-";
-                      }
-                      body.appendChild(filePart);
-                    }
+                  var frames = part.frames_asset_pointers || [];
+                  for (var j = 0; j < frames.length; j++) {
+                    parts.push({ asset: frames[j] });
                   }
                 }
               }
-              message.appendChild(body);
 
-              currentConversationDiv.appendChild(message);
+              if (parts.length > 0) {
+                var timestampRaw = Number(node.message.create_time) || 0;
+                var model = metadata.model_slug || metadata.model || null;
+                var timestamp = timestampRaw
+                  ? new Date(timestampRaw * 1000).toLocaleString()
+                  : null;
+
+                messages.push({ author: author, parts: parts, timestamp: timestamp, timestampRaw: timestampRaw, model: model });
+              }
+            }
           }
+          currentNode = node.parent;
+        }
+        return messages.reverse();
       }
 
-      // wire open button and default load with loading overlay
+      function setImportUiState(hasConversations) {
+        var controls = document.getElementById('controls');
+        if (controls) controls.style.display = hasConversations ? 'none' : 'block';
+        if (window.api && window.api.setImportMenuVisible) {
+          window.api.setImportMenuVisible(!!hasConversations);
+        }
+      }
+
+      function isSafeLink(url) {
+        if (typeof url !== 'string' || url.length === 0) return false;
+        try {
+          var parsed = new URL(url, window.location.href);
+          return parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'file:';
+        } catch (e) {
+          return false;
+        }
+      }
+
+      function formatTimestamp(timestampRaw) {
+        if (!timestampRaw) return 'No timestamp';
+        return new Date(timestampRaw * 1000).toLocaleString();
+      }
+
+      function escapeHtml(text) {
+        if (typeof text !== 'string') return '';
+        return text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function renderThreadList() {
+        var threadList = document.getElementById('threadList');
+        if (!threadList) return;
+        threadList.innerHTML = '';
+        for (var i = 0; i < renderedConversations.length; i++) {
+          var conversation = renderedConversations[i];
+          var item = document.createElement('button');
+          item.className = 'thread-item';
+          item.type = 'button';
+          item.setAttribute('data-target-id', conversation.id);
+          item.innerHTML =
+            '<div class="title">' + escapeHtml(conversation.title) + '</div>' +
+            '<div class="meta">' + formatTimestamp(conversation.timestampRaw) + '</div>';
+          threadList.appendChild(item);
+        }
+      }
+
+      function renderData(dataArray, assets) {
+        var root = document.getElementById('root');
+        var threadList = document.getElementById('threadList');
+        root.innerHTML = '';
+        if (threadList) threadList.innerHTML = '';
+        assetsJson = assets || {};
+        renderedConversations = [];
+
+        if (!Array.isArray(dataArray) || dataArray.length === 0) {
+          setImportUiState(false);
+          return;
+        }
+
+        setImportUiState(true);
+
+        var conversationsToRender = [];
+        for (var i = 0; i < dataArray.length; i++) {
+          var conversation = dataArray[i];
+          if (!conversation) continue;
+          var messages = getConversationMessages(conversation);
+          var conversationTitle = conversation.title || 'Untitled';
+          var conversationKey = conversation.conversation_id || conversation.id || conversationTitle;
+          var firstMessageTs = messages.length > 0 ? (Number(messages[0].timestampRaw) || 0) : 0;
+          var fallbackTs = Number(conversation.create_time) || Number(conversation.update_time) || 0;
+          var sortTs = firstMessageTs || fallbackTs;
+          conversationsToRender.push({
+            title: conversationTitle,
+            key: conversationKey,
+            sortTimestampRaw: sortTs,
+            messages: messages
+          });
+        }
+
+        conversationsToRender.sort(function(a, b) {
+          return a.sortTimestampRaw - b.sortTimestampRaw;
+        });
+
+        for (var c = 0; c < conversationsToRender.length; c++) {
+          var current = conversationsToRender[c];
+          var conversationId = 'conversation-' + c;
+          renderedConversations.push({
+            id: conversationId,
+            title: current.title,
+            timestampRaw: current.sortTimestampRaw
+          });
+
+          var currentConversationDiv = document.createElement('div');
+          currentConversationDiv.className = 'conversation';
+          currentConversationDiv.id = conversationId;
+
+          var heading = document.createElement('h4');
+          heading.textContent = current.title;
+          currentConversationDiv.appendChild(heading);
+
+          root.appendChild(currentConversationDiv);
+
+          for (var m = 0; m < current.messages.length; m++) {
+            var item = current.messages[m];
+            var message = document.createElement('div');
+
+            var roleClass = '';
+            if (item.author === 'user') {
+              roleClass = ' user';
+            } else if (item.author === 'ChatGPT') {
+              roleClass = ' AI';
+            }
+
+            message.className = 'message' + roleClass;
+
+            var header = document.createElement('div');
+            header.className = 'message-header';
+
+            var author = document.createElement('span');
+            author.className = 'author';
+            author.textContent = item.author;
+            header.appendChild(author);
+
+            var timestamp = document.createElement('span');
+            timestamp.className = 'timestamp';
+            timestamp.textContent = item.timestamp ? item.timestamp : '';
+            header.appendChild(timestamp);
+
+            var model = document.createElement('span');
+            model.className = 'model';
+            model.textContent = item.model ? item.model : '';
+            header.appendChild(model);
+
+            message.appendChild(header);
+
+            var body = document.createElement('div');
+            body.className = 'message-body';
+            if (item.parts) {
+              for (var k = 0; k < item.parts.length; k++) {
+                var part = item.parts[k];
+                if (part.text) {
+                  var textPart = document.createElement('div');
+                  textPart.textContent = part.text;
+                  body.appendChild(textPart);
+                } else if (assetsJson) {
+                  if (part.transcript) {
+                    var transcriptPart = document.createElement('div');
+                    transcriptPart.textContent = '[Transcript]: ' + part.transcript;
+                    body.appendChild(transcriptPart);
+                  } else if (part.asset) {
+                    var link = assetsJson[part.asset.asset_pointer];
+                    var filePart = document.createElement('div');
+                    if (link && isSafeLink(link)) {
+                      filePart.appendChild(document.createTextNode('[File]: '));
+                      var anchor = document.createElement('a');
+                      anchor.textContent = link;
+                      anchor.setAttribute('href', link);
+                      anchor.setAttribute('target', '_blank');
+                      anchor.setAttribute('rel', 'noopener noreferrer');
+                      filePart.appendChild(anchor);
+                    } else {
+                      filePart.textContent = '[File]: -Deleted-';
+                    }
+                    body.appendChild(filePart);
+                  }
+                }
+              }
+            }
+
+            message.appendChild(body);
+            currentConversationDiv.appendChild(message);
+          }
+        }
+
+        renderThreadList();
+      }
+
       window.addEventListener('DOMContentLoaded', function() {
-          async function importAndRender() {
-            if (!window.api || !window.api.openFile) {
-              alert('File open API not available');
+        var threadToggleBtn = document.getElementById('threadsToggleBtn');
+        var editBtn = document.getElementById('editBtn');
+        var threadSidebar = document.getElementById('threadSidebar');
+        var mainArea = document.getElementById('mainArea');
+
+        function setThreadSidebarOpen(isOpen) {
+          if (!threadSidebar || !mainArea || !threadToggleBtn) return;
+          threadSidebar.classList.toggle('open', isOpen);
+          mainArea.classList.toggle('sidebar-open', isOpen);
+          threadToggleBtn.classList.toggle('active', isOpen);
+          threadToggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        }
+
+        if (threadToggleBtn) {
+          threadToggleBtn.addEventListener('click', function() {
+            var shouldOpen = !threadSidebar.classList.contains('open');
+            setThreadSidebarOpen(shouldOpen);
+          });
+        }
+
+        if (editBtn) {
+          editBtn.addEventListener('click', function() {
+            editBtn.classList.toggle('active');
+          });
+        }
+
+        var threadList = document.getElementById('threadList');
+        if (threadList) {
+          threadList.addEventListener('click', function(event) {
+            var target = event.target;
+            while (target && target !== threadList && !target.classList.contains('thread-item')) {
+              target = target.parentElement;
+            }
+            if (!target || target === threadList) return;
+            var sectionId = target.getAttribute('data-target-id');
+            if (!sectionId) return;
+            var conversationSection = document.getElementById(sectionId);
+            if (conversationSection && mainArea) {
+              mainArea.scrollTo({
+                top: conversationSection.offsetTop - 16,
+                behavior: 'smooth'
+              });
+            }
+          });
+        }
+
+        async function importAndRender() {
+          if (!window.api || !window.api.openFile) {
+            alert('File open API not available');
+            return;
+          }
+          showLoading('Loading...');
+          try {
+            var res = await window.api.openFile();
+            if (!res) return;
+            if (res.error) {
+              alert('Error loading file: ' + res.error);
               return;
             }
-            showLoading('Loading...');
-            try {
-              var res = await window.api.openFile();
-              if (!res) return;
-              if (res.error) {
-                alert('Error loading file: ' + res.error);
-                return;
-              }
-              var parsed = res.data;
-              var toRender = null;
-              var assets = null;
-              if (Array.isArray(parsed)) {
-                toRender = parsed;
-              } else if (parsed && parsed.conversations) {
-                toRender  = parsed.conversations;
-                assets = parsed.assets || null;
-              } else if (parsed) {
-                toRender = [parsed];
-              }
-              renderData(toRender, assets);
-            } catch (e) {
-              console.error(e);
-              alert('Error loading file');
-            } finally {
-              hideLoading();
+            var parsed = res.data;
+            var toRender = null;
+            var assets = null;
+            if (Array.isArray(parsed)) {
+              toRender = parsed;
+            } else if (parsed && parsed.conversations) {
+              toRender = parsed.conversations;
+              assets = parsed.assets || null;
+            } else if (parsed) {
+              toRender = [parsed];
             }
+            renderData(toRender, assets);
+          } catch (e) {
+            console.error(e);
+            alert('Error loading file');
+          } finally {
+            hideLoading();
           }
+        }
 
-          var btn = document.getElementById('openFileBtn');
-          if (btn) {
-            btn.addEventListener('click', importAndRender);
-          }
+        var btn = document.getElementById('openFileBtn');
+        if (btn) {
+          btn.addEventListener('click', importAndRender);
+        }
 
-          if (window.api && window.api.onImportFromMenu) {
-            window.api.onImportFromMenu(importAndRender);
-          }
+        if (window.api && window.api.onImportFromMenu) {
+          window.api.onImportFromMenu(importAndRender);
+        }
 
-          setImportUiState(false);
+        setImportUiState(false);
 
-          // try to load default conversations from the local Conversation folder
-          if (window.api && window.api.loadDefault) {
-            showLoading('Loading default conversation...');
-            window.api.loadDefault().then(res => {
-              if (!res || res.error || !res.data) return;
-              var parsed = res.data;
-              var toRender = null;
-              var assets = null;
-              if (Array.isArray(parsed)) {
-                toRender = parsed;
-              } else if (parsed && parsed.conversations) {
-                toRender = parsed.conversations;
-                assets = parsed.assets || null;
-              } else if (parsed) {
-                toRender = [parsed];
-              }
-              renderData(toRender, assets);
-            }).catch(()=>{}).finally(() => hideLoading());
-          }
+        if (window.api && window.api.loadDefault) {
+          showLoading('Loading default conversation...');
+          window.api.loadDefault().then(function(res) {
+            if (!res || res.error || !res.data) return;
+            var parsed = res.data;
+            var toRender = null;
+            var assets = null;
+            if (Array.isArray(parsed)) {
+              toRender = parsed;
+            } else if (parsed && parsed.conversations) {
+              toRender = parsed.conversations;
+              assets = parsed.assets || null;
+            } else if (parsed) {
+              toRender = [parsed];
+            }
+            renderData(toRender, assets);
+          }).catch(function() {}).finally(function() {
+            hideLoading();
+          });
+        }
       });
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -428,18 +664,40 @@
     <link href="https://fonts.googleapis.com/css2?family=Playpen+Sans:wght@100..800&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div class="content">
-      <div id="controls">
-        <button id="openFileBtn">Open Conversation</button>
-      </div>
-      <div id="loadingOverlay">
-        <div class="loading-box">
-          <div class="spinner" aria-hidden="true"></div>
-          <div class="loading-text">Loading...</div>
+    <div id="appLayout">
+      <nav id="leftNav" aria-label="Primary">
+        <button id="threadsToggleBtn" class="nav-icon-btn" type="button" aria-label="Toggle threads panel" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 5h16v2H4V5zm0 6h16v2H4v-2zm0 6h10v2H4v-2z"></path>
+          </svg>
+        </button>
+        <button id="editBtn" class="nav-icon-btn" type="button" aria-label="Edit">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zm17.71-10.04a1.004 1.004 0 0 0 0-1.42l-2.5-2.5a1.004 1.004 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 2-1.66z"></path>
+          </svg>
+        </button>
+      </nav>
+
+      <aside id="threadSidebar" aria-label="Threads">
+        <div class="sidebar-header">Threads</div>
+        <div id="threadList"></div>
+      </aside>
+
+      <main id="mainArea">
+        <div class="content">
+          <div id="controls">
+            <button id="openFileBtn">Open Conversation</button>
+          </div>
+          <div id="root"></div>
         </div>
+      </main>
+    </div>
+
+    <div id="loadingOverlay">
+      <div class="loading-box">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="loading-text">Loading...</div>
       </div>
-      <div id="root"></div>
     </div>
   </body>
 </html>
-
