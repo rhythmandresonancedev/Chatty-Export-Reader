@@ -103,6 +103,35 @@
         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       }
 
+      .sidebar-search {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      #threadSearchInput {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.06);
+        color: #DDD;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        padding: 9px 10px;
+        font-size: 0.9rem;
+        outline: none;
+      }
+
+      #threadSearchInput:focus {
+        border-color: rgba(255, 255, 255, 0.32);
+        background: rgba(255, 255, 255, 0.09);
+      }
+
+      #threadSearchInput::placeholder {
+        color: rgba(221, 221, 221, 0.55);
+      }
+
+      #threadSearchInput:disabled {
+        opacity: 0.45;
+      }
+
       #threadList {
         flex: 1;
         overflow-y: hidden;
@@ -216,6 +245,13 @@
         min-width: 92px;
         font-size: 0.9rem;
         opacity: 0.75;
+      }
+
+      .empty-state {
+        color: #DDD;
+        opacity: 0.75;
+        padding: 24px 0;
+        text-align: center;
       }
 
       button {
@@ -354,11 +390,14 @@
     <script>
       var jsonData = [];
       var assetsJson = {};
+      var allConversationsForDisplay = [];
       var conversationsForDisplay = [];
       var renderedConversations = [];
       var currentPage = 1;
       var pageSize = 25;
       var isPageLoading = false;
+      var searchQuery = '';
+      var searchDebounceTimer = null;
 
       function showLoading(text) {
         var el = document.getElementById('loadingOverlay');
@@ -485,6 +524,41 @@
         }
       }
 
+      function updateSearchControls() {
+        var searchInput = document.getElementById('threadSearchInput');
+        if (!searchInput) return;
+        searchInput.disabled = jsonData.length === 0;
+        if (searchInput.value !== searchQuery) {
+          searchInput.value = searchQuery;
+        }
+      }
+
+      function buildConversationSearchText(title, messages) {
+        var parts = [title || ''];
+        for (var i = 0; i < messages.length; i++) {
+          var messageParts = messages[i].parts || [];
+          for (var j = 0; j < messageParts.length; j++) {
+            if (messageParts[j].text) {
+              parts.push(messageParts[j].text);
+            } else if (messageParts[j].transcript) {
+              parts.push(messageParts[j].transcript);
+            }
+          }
+        }
+        return parts.join('\n').toLowerCase();
+      }
+
+      function applyFilters() {
+        var query = searchQuery.trim().toLowerCase();
+        if (!query) {
+          conversationsForDisplay = allConversationsForDisplay;
+          return;
+        }
+        conversationsForDisplay = allConversationsForDisplay.filter(function(conversation) {
+          return conversation.searchText.indexOf(query) !== -1;
+        });
+      }
+
       function getFilteredConversations() {
         return conversationsForDisplay;
       }
@@ -508,7 +582,7 @@
         var hasConversations = totalConversations > 0;
 
         if (paginationControls) {
-          paginationControls.style.display = hasConversations ? 'flex' : 'none';
+          paginationControls.style.display = jsonData.length > 0 ? 'flex' : 'none';
         }
         if (pageSizeSelect) {
           pageSizeSelect.value = String(pageSize);
@@ -546,6 +620,24 @@
         });
       }
 
+      function applyFiltersAndRenderAfterPaint() {
+        isPageLoading = true;
+        updatePaginationControls();
+
+        requestAnimationFrame(function() {
+          setTimeout(function() {
+            try {
+              applyFilters();
+              currentPage = 1;
+              renderCurrentPage();
+            } finally {
+              isPageLoading = false;
+              updatePaginationControls();
+            }
+          }, 0);
+        });
+      }
+
       function renderCurrentPage() {
         var root = document.getElementById('root');
         var threadList = document.getElementById('threadList');
@@ -555,8 +647,17 @@
 
         var conversations = getFilteredConversations();
         if (conversations.length === 0) {
+          if (jsonData.length > 0) {
+            var emptyState = document.createElement('div');
+            emptyState.className = 'empty-state';
+            emptyState.textContent = searchQuery.trim()
+              ? 'No conversations match your search.'
+              : 'No conversations to display.';
+            root.appendChild(emptyState);
+          }
           updatePaginationControls();
-          setImportUiState(false);
+          renderThreadList();
+          setImportUiState(jsonData.length > 0);
           return;
         }
 
@@ -660,17 +761,25 @@
         }
 
         updatePaginationControls();
+        updateSearchControls();
         renderThreadList();
       }
 
       function renderData(dataArray, assets) {
         jsonData = [];
+        allConversationsForDisplay = [];
         conversationsForDisplay = [];
         assetsJson = assets || {};
         currentPage = 1;
+        searchQuery = '';
+        if (searchDebounceTimer) {
+          clearTimeout(searchDebounceTimer);
+          searchDebounceTimer = null;
+        }
 
         if (!Array.isArray(dataArray) || dataArray.length === 0) {
           renderCurrentPage();
+          updateSearchControls();
           return;
         }
 
@@ -684,18 +793,21 @@
           var firstMessageTs = messages.length > 0 ? (Number(messages[0].timestampRaw) || 0) : 0;
           var fallbackTs = Number(conversation.create_time) || Number(conversation.update_time) || 0;
           var sortTs = firstMessageTs || fallbackTs;
-          conversationsForDisplay.push({
+          allConversationsForDisplay.push({
             title: conversationTitle,
             key: conversationKey,
             sortTimestampRaw: sortTs,
-            messages: messages
+            messages: messages,
+            searchText: buildConversationSearchText(conversationTitle, messages)
           });
         }
 
-        conversationsForDisplay.sort(function(a, b) {
+        allConversationsForDisplay.sort(function(a, b) {
           return a.sortTimestampRaw - b.sortTimestampRaw;
         });
 
+        applyFilters();
+        updateSearchControls();
         renderCurrentPage();
       }
 
@@ -743,6 +855,21 @@
                 behavior: 'smooth'
               });
             }
+          });
+        }
+
+        var threadSearchInput = document.getElementById('threadSearchInput');
+        if (threadSearchInput) {
+          threadSearchInput.addEventListener('input', function() {
+            searchQuery = threadSearchInput.value || '';
+            if (searchDebounceTimer) {
+              clearTimeout(searchDebounceTimer);
+            }
+            searchDebounceTimer = setTimeout(function() {
+              searchDebounceTimer = null;
+              applyFiltersAndRenderAfterPaint();
+              if (mainArea) mainArea.scrollTo({ top: 0 });
+            }, 275);
           });
         }
 
@@ -878,6 +1005,9 @@
 
       <aside id="threadSidebar" aria-label="Threads">
         <div class="sidebar-header">Threads</div>
+        <div class="sidebar-search">
+          <input id="threadSearchInput" type="search" placeholder="Search conversations" autocomplete="off" disabled>
+        </div>
         <div id="threadList"></div>
       </aside>
 
