@@ -211,6 +211,13 @@
         opacity: 0.85;
       }
 
+      #pageLoadingIndicator {
+        display: none;
+        min-width: 92px;
+        font-size: 0.9rem;
+        opacity: 0.75;
+      }
+
       button {
         padding: 8px 12px;
         font-size: 14px;
@@ -351,6 +358,7 @@
       var renderedConversations = [];
       var currentPage = 1;
       var pageSize = 25;
+      var isPageLoading = false;
 
       function showLoading(text) {
         var el = document.getElementById('loadingOverlay');
@@ -494,6 +502,7 @@
         var nextPageBtn = document.getElementById('nextPageBtn');
         var lastPageBtn = document.getElementById('lastPageBtn');
         var pageIndicator = document.getElementById('pageIndicator');
+        var pageLoadingIndicator = document.getElementById('pageLoadingIndicator');
         var totalConversations = getFilteredConversations().length;
         var totalPages = getTotalPages();
         var hasConversations = totalConversations > 0;
@@ -503,6 +512,10 @@
         }
         if (pageSizeSelect) {
           pageSizeSelect.value = String(pageSize);
+          pageSizeSelect.disabled = isPageLoading || !hasConversations;
+        }
+        if (pageLoadingIndicator) {
+          pageLoadingIndicator.style.display = isPageLoading ? 'inline' : 'none';
         }
         if (pageIndicator) {
           var start = hasConversations ? ((currentPage - 1) * pageSize) + 1 : 0;
@@ -511,10 +524,26 @@
             ? 'Page ' + currentPage + ' of ' + totalPages + ' (' + start + '-' + end + ' of ' + totalConversations + ')'
             : 'Page 0 of 0';
         }
-        if (firstPageBtn) firstPageBtn.disabled = !hasConversations || currentPage <= 1;
-        if (prevPageBtn) prevPageBtn.disabled = !hasConversations || currentPage <= 1;
-        if (nextPageBtn) nextPageBtn.disabled = !hasConversations || currentPage >= totalPages;
-        if (lastPageBtn) lastPageBtn.disabled = !hasConversations || currentPage >= totalPages;
+        if (firstPageBtn) firstPageBtn.disabled = isPageLoading || !hasConversations || currentPage <= 1;
+        if (prevPageBtn) prevPageBtn.disabled = isPageLoading || !hasConversations || currentPage <= 1;
+        if (nextPageBtn) nextPageBtn.disabled = isPageLoading || !hasConversations || currentPage >= totalPages;
+        if (lastPageBtn) lastPageBtn.disabled = isPageLoading || !hasConversations || currentPage >= totalPages;
+      }
+
+      function renderCurrentPageAfterPaint() {
+        isPageLoading = true;
+        updatePaginationControls();
+
+        requestAnimationFrame(function() {
+          setTimeout(function() {
+            try {
+              renderCurrentPage();
+            } finally {
+              isPageLoading = false;
+              updatePaginationControls();
+            }
+          }, 0);
+        });
       }
 
       function renderCurrentPage() {
@@ -722,15 +751,15 @@
           pageSizeSelect.addEventListener('change', function() {
             pageSize = Number(pageSizeSelect.value) || 25;
             currentPage = 1;
-            renderCurrentPage();
             if (mainArea) mainArea.scrollTo({ top: 0 });
+            renderCurrentPageAfterPaint();
           });
         }
 
         function goToPage(page) {
           currentPage = Math.min(Math.max(page, 1), getTotalPages());
-          renderCurrentPage();
           if (mainArea) mainArea.scrollTo({ top: 0 });
+          renderCurrentPageAfterPaint();
         }
 
         var firstPageBtn = document.getElementById('firstPageBtn');
@@ -869,6 +898,7 @@
             <button id="firstPageBtn" type="button">First</button>
             <button id="prevPageBtn" type="button">Previous</button>
             <span id="pageIndicator" aria-live="polite">Page 0 of 0</span>
+            <span id="pageLoadingIndicator" aria-live="polite">Loading page...</span>
             <button id="nextPageBtn" type="button">Next</button>
             <button id="lastPageBtn" type="button">Last</button>
           </div>
