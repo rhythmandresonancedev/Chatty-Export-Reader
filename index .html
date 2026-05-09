@@ -467,6 +467,7 @@
       var conversationSearchQuery = '';
       var conversationSearchMatches = [];
       var currentConversationMatchIndex = -1;
+      var dom = {};
 
       function showLoading(text) {
         var el = document.getElementById('loadingOverlay');
@@ -479,6 +480,32 @@
         var el = document.getElementById('loadingOverlay');
         if (!el) return;
         el.style.display = 'none';
+      }
+
+      function cacheDom() {
+        dom.controls = document.getElementById('controls');
+        dom.root = document.getElementById('root');
+        dom.threadList = document.getElementById('threadList');
+        dom.threadSearchInput = document.getElementById('threadSearchInput');
+        dom.paginationControls = document.getElementById('paginationControls');
+        dom.pageSizeSelect = document.getElementById('pageSizeSelect');
+        dom.firstPageBtn = document.getElementById('firstPageBtn');
+        dom.prevPageBtn = document.getElementById('prevPageBtn');
+        dom.nextPageBtn = document.getElementById('nextPageBtn');
+        dom.lastPageBtn = document.getElementById('lastPageBtn');
+        dom.pageIndicator = document.getElementById('pageIndicator');
+        dom.pageLoadingIndicator = document.getElementById('pageLoadingIndicator');
+        dom.conversationSearchControls = document.getElementById('conversationSearchControls');
+        dom.conversationSearchInput = document.getElementById('conversationSearchInput');
+        dom.conversationSearchPrevBtn = document.getElementById('conversationSearchPrevBtn');
+        dom.conversationSearchNextBtn = document.getElementById('conversationSearchNextBtn');
+        dom.conversationMatchCount = document.getElementById('conversationMatchCount');
+      }
+
+      function scheduleAfterPaint(work) {
+        requestAnimationFrame(function() {
+          setTimeout(work, 0);
+        });
       }
 
       function getConversationMessages(conversation) {
@@ -544,7 +571,7 @@
       }
 
       function setImportUiState(hasConversations) {
-        var controls = document.getElementById('controls');
+        var controls = dom.controls || document.getElementById('controls');
         if (controls) controls.style.display = hasConversations ? 'none' : 'block';
         if (window.api && window.api.setImportMenuVisible) {
           window.api.setImportMenuVisible(!!hasConversations);
@@ -577,9 +604,10 @@
       }
 
       function renderThreadList() {
-        var threadList = document.getElementById('threadList');
+        var threadList = dom.threadList || document.getElementById('threadList');
         if (!threadList) return;
         threadList.innerHTML = '';
+        var fragment = document.createDocumentFragment();
         for (var i = 0; i < renderedConversations.length; i++) {
           var conversation = renderedConversations[i];
           var item = document.createElement('button');
@@ -592,12 +620,13 @@
           item.innerHTML =
             '<div class="title">' + conversation.number + '. ' + escapeHtml(conversation.title) + '</div>' +
             '<div class="meta">' + formatTimestamp(conversation.timestampRaw) + '</div>';
-          threadList.appendChild(item);
+          fragment.appendChild(item);
         }
+        threadList.appendChild(fragment);
       }
 
       function updateSearchControls() {
-        var searchInput = document.getElementById('threadSearchInput');
+        var searchInput = dom.threadSearchInput || document.getElementById('threadSearchInput');
         if (!searchInput) return;
         searchInput.disabled = jsonData.length === 0;
         if (searchInput.value !== searchQuery) {
@@ -620,6 +649,23 @@
         return parts.join('\n').toLowerCase();
       }
 
+      function normalizeConversation(conversation) {
+        var messages = getConversationMessages(conversation);
+        var conversationTitle = conversation.title || 'Untitled';
+        var conversationKey = conversation.conversation_id || conversation.id || conversationTitle;
+        var firstMessageTs = messages.length > 0 ? (Number(messages[0].timestampRaw) || 0) : 0;
+        var fallbackTs = Number(conversation.create_time) || Number(conversation.update_time) || 0;
+        var sortTs = firstMessageTs || fallbackTs;
+
+        return {
+          title: conversationTitle,
+          key: conversationKey,
+          sortTimestampRaw: sortTs,
+          messages: messages,
+          searchText: buildConversationSearchText(conversationTitle, messages)
+        };
+      }
+
       function applyFilters() {
         var query = searchQuery.trim().toLowerCase();
         if (!query) {
@@ -631,12 +677,38 @@
         });
       }
 
+      function resetConversationSearch() {
+        conversationSearchQuery = '';
+        conversationSearchMatches = [];
+        currentConversationMatchIndex = -1;
+        clearConversationSearchHighlights(dom.root || document.getElementById('root'));
+      }
+
+      function clearActiveConversation() {
+        activeConversationId = null;
+        resetConversationSearch();
+      }
+
+      function resetReaderState() {
+        jsonData = [];
+        allConversationsForDisplay = [];
+        conversationsForDisplay = [];
+        renderedConversations = [];
+        currentPage = 1;
+        searchQuery = '';
+        clearActiveConversation();
+        if (searchDebounceTimer) {
+          clearTimeout(searchDebounceTimer);
+          searchDebounceTimer = null;
+        }
+      }
+
       function updateConversationSearchControls() {
-        var controls = document.getElementById('conversationSearchControls');
-        var input = document.getElementById('conversationSearchInput');
-        var prevBtn = document.getElementById('conversationSearchPrevBtn');
-        var nextBtn = document.getElementById('conversationSearchNextBtn');
-        var matchCount = document.getElementById('conversationMatchCount');
+        var controls = dom.conversationSearchControls || document.getElementById('conversationSearchControls');
+        var input = dom.conversationSearchInput || document.getElementById('conversationSearchInput');
+        var prevBtn = dom.conversationSearchPrevBtn || document.getElementById('conversationSearchPrevBtn');
+        var nextBtn = dom.conversationSearchNextBtn || document.getElementById('conversationSearchNextBtn');
+        var matchCount = dom.conversationMatchCount || document.getElementById('conversationMatchCount');
         var hasActiveConversation = !!document.getElementById(activeConversationId);
         var hasMatches = conversationSearchMatches.length > 0;
 
@@ -708,7 +780,7 @@
       }
 
       function runConversationSearch() {
-        var root = document.getElementById('root');
+        var root = dom.root || document.getElementById('root');
         clearConversationSearchHighlights(root);
         conversationSearchMatches = [];
         currentConversationMatchIndex = -1;
@@ -766,10 +838,7 @@
         }
 
         activeConversationId = conversationId;
-        conversationSearchQuery = '';
-        conversationSearchMatches = [];
-        currentConversationMatchIndex = -1;
-        clearConversationSearchHighlights(document.getElementById('root'));
+        resetConversationSearch();
         updateConversationSearchControls();
         renderThreadList();
       }
@@ -784,14 +853,14 @@
       }
 
       function updatePaginationControls() {
-        var paginationControls = document.getElementById('paginationControls');
-        var pageSizeSelect = document.getElementById('pageSizeSelect');
-        var firstPageBtn = document.getElementById('firstPageBtn');
-        var prevPageBtn = document.getElementById('prevPageBtn');
-        var nextPageBtn = document.getElementById('nextPageBtn');
-        var lastPageBtn = document.getElementById('lastPageBtn');
-        var pageIndicator = document.getElementById('pageIndicator');
-        var pageLoadingIndicator = document.getElementById('pageLoadingIndicator');
+        var paginationControls = dom.paginationControls || document.getElementById('paginationControls');
+        var pageSizeSelect = dom.pageSizeSelect || document.getElementById('pageSizeSelect');
+        var firstPageBtn = dom.firstPageBtn || document.getElementById('firstPageBtn');
+        var prevPageBtn = dom.prevPageBtn || document.getElementById('prevPageBtn');
+        var nextPageBtn = dom.nextPageBtn || document.getElementById('nextPageBtn');
+        var lastPageBtn = dom.lastPageBtn || document.getElementById('lastPageBtn');
+        var pageIndicator = dom.pageIndicator || document.getElementById('pageIndicator');
+        var pageLoadingIndicator = dom.pageLoadingIndicator || document.getElementById('pageLoadingIndicator');
         var totalConversations = getFilteredConversations().length;
         var totalPages = getTotalPages();
         var hasConversations = totalConversations > 0;
@@ -823,15 +892,13 @@
         isPageLoading = true;
         updatePaginationControls();
 
-        requestAnimationFrame(function() {
-          setTimeout(function() {
-            try {
-              renderCurrentPage();
-            } finally {
-              isPageLoading = false;
-              updatePaginationControls();
-            }
-          }, 0);
+        scheduleAfterPaint(function() {
+          try {
+            renderCurrentPage();
+          } finally {
+            isPageLoading = false;
+            updatePaginationControls();
+          }
         });
       }
 
@@ -839,33 +906,119 @@
         isPageLoading = true;
         updatePaginationControls();
 
-        requestAnimationFrame(function() {
-          setTimeout(function() {
-            try {
-              applyFilters();
-              currentPage = 1;
-              renderCurrentPage();
-            } finally {
-              isPageLoading = false;
-              updatePaginationControls();
-            }
-          }, 0);
+        scheduleAfterPaint(function() {
+          try {
+            applyFilters();
+            currentPage = 1;
+            renderCurrentPage();
+          } finally {
+            isPageLoading = false;
+            updatePaginationControls();
+          }
         });
       }
 
+      function appendMessagePart(body, part) {
+        if (part.text) {
+          var textPart = document.createElement('div');
+          textPart.textContent = part.text;
+          body.appendChild(textPart);
+          return;
+        }
+
+        if (!assetsJson) return;
+        if (part.transcript) {
+          var transcriptPart = document.createElement('div');
+          transcriptPart.textContent = '[Transcript]: ' + part.transcript;
+          body.appendChild(transcriptPart);
+          return;
+        }
+
+        if (!part.asset) return;
+        var link = assetsJson[part.asset.asset_pointer];
+        var filePart = document.createElement('div');
+        if (link && isSafeLink(link)) {
+          filePart.appendChild(document.createTextNode('[File]: '));
+          var anchor = document.createElement('a');
+          anchor.textContent = link;
+          anchor.setAttribute('href', link);
+          anchor.setAttribute('target', '_blank');
+          anchor.setAttribute('rel', 'noopener noreferrer');
+          filePart.appendChild(anchor);
+        } else {
+          filePart.textContent = '[File]: -Deleted-';
+        }
+        body.appendChild(filePart);
+      }
+
+      function renderMessageElement(item) {
+        var message = document.createElement('div');
+        var roleClass = '';
+        if (item.author === 'user') {
+          roleClass = ' user';
+        } else if (item.author === 'ChatGPT') {
+          roleClass = ' AI';
+        }
+
+        message.className = 'message' + roleClass;
+
+        var header = document.createElement('div');
+        header.className = 'message-header';
+
+        var author = document.createElement('span');
+        author.className = 'author';
+        author.textContent = item.author;
+        header.appendChild(author);
+
+        var timestamp = document.createElement('span');
+        timestamp.className = 'timestamp';
+        timestamp.textContent = item.timestamp ? item.timestamp : '';
+        header.appendChild(timestamp);
+
+        var model = document.createElement('span');
+        model.className = 'model';
+        model.textContent = item.model ? item.model : '';
+        header.appendChild(model);
+
+        message.appendChild(header);
+
+        var body = document.createElement('div');
+        body.className = 'message-body';
+        var parts = item.parts || [];
+        for (var i = 0; i < parts.length; i++) {
+          appendMessagePart(body, parts[i]);
+        }
+
+        message.appendChild(body);
+        return message;
+      }
+
+      function renderConversationElement(conversation, conversationId, conversationNumber) {
+        var currentConversationDiv = document.createElement('div');
+        currentConversationDiv.className = 'conversation';
+        currentConversationDiv.id = conversationId;
+
+        var heading = document.createElement('h4');
+        heading.textContent = conversationNumber + '. ' + conversation.title;
+        currentConversationDiv.appendChild(heading);
+
+        for (var i = 0; i < conversation.messages.length; i++) {
+          currentConversationDiv.appendChild(renderMessageElement(conversation.messages[i]));
+        }
+
+        return currentConversationDiv;
+      }
+
       function renderCurrentPage() {
-        var root = document.getElementById('root');
-        var threadList = document.getElementById('threadList');
+        var root = dom.root || document.getElementById('root');
+        var threadList = dom.threadList || document.getElementById('threadList');
         root.innerHTML = '';
         if (threadList) threadList.innerHTML = '';
         renderedConversations = [];
 
         var conversations = getFilteredConversations();
         if (conversations.length === 0) {
-          activeConversationId = null;
-          conversationSearchQuery = '';
-          conversationSearchMatches = [];
-          currentConversationMatchIndex = -1;
+          clearActiveConversation();
           if (jsonData.length > 0) {
             var emptyState = document.createElement('div');
             emptyState.className = 'empty-state';
@@ -886,6 +1039,7 @@
         currentPage = Math.min(Math.max(currentPage, 1), totalPages);
         var startIndex = (currentPage - 1) * pageSize;
         var pageConversations = conversations.slice(startIndex, startIndex + pageSize);
+        var pageFragment = document.createDocumentFragment();
 
         for (var c = 0; c < pageConversations.length; c++) {
           var current = pageConversations[c];
@@ -898,93 +1052,13 @@
             timestampRaw: current.sortTimestampRaw
           });
 
-          var currentConversationDiv = document.createElement('div');
-          currentConversationDiv.className = 'conversation';
-          currentConversationDiv.id = conversationId;
-
-          var heading = document.createElement('h4');
-          heading.textContent = conversationNumber + '. ' + current.title;
-          currentConversationDiv.appendChild(heading);
-
-          root.appendChild(currentConversationDiv);
-
-          for (var m = 0; m < current.messages.length; m++) {
-            var item = current.messages[m];
-            var message = document.createElement('div');
-
-            var roleClass = '';
-            if (item.author === 'user') {
-              roleClass = ' user';
-            } else if (item.author === 'ChatGPT') {
-              roleClass = ' AI';
-            }
-
-            message.className = 'message' + roleClass;
-
-            var header = document.createElement('div');
-            header.className = 'message-header';
-
-            var author = document.createElement('span');
-            author.className = 'author';
-            author.textContent = item.author;
-            header.appendChild(author);
-
-            var timestamp = document.createElement('span');
-            timestamp.className = 'timestamp';
-            timestamp.textContent = item.timestamp ? item.timestamp : '';
-            header.appendChild(timestamp);
-
-            var model = document.createElement('span');
-            model.className = 'model';
-            model.textContent = item.model ? item.model : '';
-            header.appendChild(model);
-
-            message.appendChild(header);
-
-            var body = document.createElement('div');
-            body.className = 'message-body';
-            if (item.parts) {
-              for (var k = 0; k < item.parts.length; k++) {
-                var part = item.parts[k];
-                if (part.text) {
-                  var textPart = document.createElement('div');
-                  textPart.textContent = part.text;
-                  body.appendChild(textPart);
-                } else if (assetsJson) {
-                  if (part.transcript) {
-                    var transcriptPart = document.createElement('div');
-                    transcriptPart.textContent = '[Transcript]: ' + part.transcript;
-                    body.appendChild(transcriptPart);
-                  } else if (part.asset) {
-                    var link = assetsJson[part.asset.asset_pointer];
-                    var filePart = document.createElement('div');
-                    if (link && isSafeLink(link)) {
-                      filePart.appendChild(document.createTextNode('[File]: '));
-                      var anchor = document.createElement('a');
-                      anchor.textContent = link;
-                      anchor.setAttribute('href', link);
-                      anchor.setAttribute('target', '_blank');
-                      anchor.setAttribute('rel', 'noopener noreferrer');
-                      filePart.appendChild(anchor);
-                    } else {
-                      filePart.textContent = '[File]: -Deleted-';
-                    }
-                    body.appendChild(filePart);
-                  }
-                }
-              }
-            }
-
-            message.appendChild(body);
-            currentConversationDiv.appendChild(message);
-          }
+          pageFragment.appendChild(renderConversationElement(current, conversationId, conversationNumber));
         }
+        root.appendChild(pageFragment);
 
         if (!document.getElementById(activeConversationId) && renderedConversations.length > 0) {
           activeConversationId = renderedConversations[0].id;
-          conversationSearchQuery = '';
-          conversationSearchMatches = [];
-          currentConversationMatchIndex = -1;
+          resetConversationSearch();
         }
 
         updatePaginationControls();
@@ -998,20 +1072,8 @@
       }
 
       function renderData(dataArray, assets) {
-        jsonData = [];
-        allConversationsForDisplay = [];
-        conversationsForDisplay = [];
+        resetReaderState();
         assetsJson = assets || {};
-        currentPage = 1;
-        searchQuery = '';
-        activeConversationId = null;
-        conversationSearchQuery = '';
-        conversationSearchMatches = [];
-        currentConversationMatchIndex = -1;
-        if (searchDebounceTimer) {
-          clearTimeout(searchDebounceTimer);
-          searchDebounceTimer = null;
-        }
 
         if (!Array.isArray(dataArray) || dataArray.length === 0) {
           renderCurrentPage();
@@ -1023,19 +1085,7 @@
           var conversation = dataArray[i];
           if (!conversation) continue;
           jsonData.push(conversation);
-          var messages = getConversationMessages(conversation);
-          var conversationTitle = conversation.title || 'Untitled';
-          var conversationKey = conversation.conversation_id || conversation.id || conversationTitle;
-          var firstMessageTs = messages.length > 0 ? (Number(messages[0].timestampRaw) || 0) : 0;
-          var fallbackTs = Number(conversation.create_time) || Number(conversation.update_time) || 0;
-          var sortTs = firstMessageTs || fallbackTs;
-          allConversationsForDisplay.push({
-            title: conversationTitle,
-            key: conversationKey,
-            sortTimestampRaw: sortTs,
-            messages: messages,
-            searchText: buildConversationSearchText(conversationTitle, messages)
-          });
+          allConversationsForDisplay.push(normalizeConversation(conversation));
         }
 
         allConversationsForDisplay.sort(function(a, b) {
@@ -1048,6 +1098,7 @@
       }
 
       window.addEventListener('DOMContentLoaded', function() {
+        cacheDom();
         var threadToggleBtn = document.getElementById('threadsToggleBtn');
         var editBtn = document.getElementById('editBtn');
         var threadSidebar = document.getElementById('threadSidebar');
@@ -1074,7 +1125,7 @@
           });
         }
 
-        var threadList = document.getElementById('threadList');
+        var threadList = dom.threadList;
         if (threadList) {
           threadList.addEventListener('click', function(event) {
             var target = event.target;
@@ -1095,7 +1146,7 @@
           });
         }
 
-        var root = document.getElementById('root');
+        var root = dom.root;
         if (root) {
           root.addEventListener('click', function(event) {
             var conversation = event.target.closest ? event.target.closest('.conversation') : null;
@@ -1105,7 +1156,7 @@
           });
         }
 
-        var threadSearchInput = document.getElementById('threadSearchInput');
+        var threadSearchInput = dom.threadSearchInput;
         if (threadSearchInput) {
           threadSearchInput.addEventListener('input', function() {
             searchQuery = threadSearchInput.value || '';
@@ -1120,7 +1171,7 @@
           });
         }
 
-        var conversationSearchInput = document.getElementById('conversationSearchInput');
+        var conversationSearchInput = dom.conversationSearchInput;
         if (conversationSearchInput) {
           conversationSearchInput.addEventListener('input', function() {
             conversationSearchQuery = conversationSearchInput.value || '';
@@ -1128,8 +1179,8 @@
           });
         }
 
-        var conversationSearchPrevBtn = document.getElementById('conversationSearchPrevBtn');
-        var conversationSearchNextBtn = document.getElementById('conversationSearchNextBtn');
+        var conversationSearchPrevBtn = dom.conversationSearchPrevBtn;
+        var conversationSearchNextBtn = dom.conversationSearchNextBtn;
         if (conversationSearchPrevBtn) {
           conversationSearchPrevBtn.addEventListener('click', function() {
             selectConversationSearchMatch(currentConversationMatchIndex - 1);
@@ -1141,7 +1192,7 @@
           });
         }
 
-        var pageSizeSelect = document.getElementById('pageSizeSelect');
+        var pageSizeSelect = dom.pageSizeSelect;
         if (pageSizeSelect) {
           pageSizeSelect.addEventListener('change', function() {
             pageSize = Number(pageSizeSelect.value) || 25;
@@ -1157,10 +1208,10 @@
           renderCurrentPageAfterPaint();
         }
 
-        var firstPageBtn = document.getElementById('firstPageBtn');
-        var prevPageBtn = document.getElementById('prevPageBtn');
-        var nextPageBtn = document.getElementById('nextPageBtn');
-        var lastPageBtn = document.getElementById('lastPageBtn');
+        var firstPageBtn = dom.firstPageBtn;
+        var prevPageBtn = dom.prevPageBtn;
+        var nextPageBtn = dom.nextPageBtn;
+        var lastPageBtn = dom.lastPageBtn;
 
         if (firstPageBtn) {
           firstPageBtn.addEventListener('click', function() {
