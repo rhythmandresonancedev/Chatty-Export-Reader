@@ -157,6 +157,10 @@
         background: rgba(255, 255, 255, 0.09);
       }
 
+      .thread-item.active {
+        background: rgba(255, 255, 255, 0.16);
+      }
+
       .thread-item .title {
         font-size: 0.9rem;
         line-height: 1.25rem;
@@ -245,6 +249,67 @@
         min-width: 92px;
         font-size: 0.9rem;
         opacity: 0.75;
+      }
+
+      #conversationSearchControls {
+        display: none;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+        color: #DDD;
+      }
+
+      #conversationSearchInput {
+        min-width: 240px;
+        flex: 1;
+        background: #222222;
+        color: #DDD;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 5px;
+        padding: 8px 10px;
+        font-size: 0.9rem;
+        outline: none;
+      }
+
+      #conversationSearchInput:focus {
+        border-color: rgba(255, 255, 255, 0.36);
+      }
+
+      #conversationSearchInput:disabled {
+        opacity: 0.45;
+      }
+
+      #conversationSearchControls button {
+        background: #222222;
+        color: #DDD;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 5px;
+        cursor: pointer;
+      }
+
+      #conversationSearchControls button:disabled {
+        cursor: default;
+        opacity: 0.4;
+      }
+
+      #conversationMatchCount {
+        min-width: 56px;
+        text-align: center;
+        font-size: 0.9rem;
+        opacity: 0.85;
+      }
+
+      .conversation-search-match {
+        background: rgba(255, 215, 0, 0.28);
+        color: inherit;
+        border-radius: 2px;
+        padding: 0 1px;
+      }
+
+      .conversation-search-match.current {
+        background: rgba(255, 215, 0, 0.65);
+        outline: 1px solid rgba(255, 255, 255, 0.55);
       }
 
       .empty-state {
@@ -398,6 +463,10 @@
       var isPageLoading = false;
       var searchQuery = '';
       var searchDebounceTimer = null;
+      var activeConversationId = null;
+      var conversationSearchQuery = '';
+      var conversationSearchMatches = [];
+      var currentConversationMatchIndex = -1;
 
       function showLoading(text) {
         var el = document.getElementById('loadingOverlay');
@@ -515,6 +584,9 @@
           var conversation = renderedConversations[i];
           var item = document.createElement('button');
           item.className = 'thread-item';
+          if (conversation.id === activeConversationId) {
+            item.className += ' active';
+          }
           item.type = 'button';
           item.setAttribute('data-target-id', conversation.id);
           item.innerHTML =
@@ -557,6 +629,149 @@
         conversationsForDisplay = allConversationsForDisplay.filter(function(conversation) {
           return conversation.searchText.indexOf(query) !== -1;
         });
+      }
+
+      function updateConversationSearchControls() {
+        var controls = document.getElementById('conversationSearchControls');
+        var input = document.getElementById('conversationSearchInput');
+        var prevBtn = document.getElementById('conversationSearchPrevBtn');
+        var nextBtn = document.getElementById('conversationSearchNextBtn');
+        var matchCount = document.getElementById('conversationMatchCount');
+        var hasActiveConversation = !!document.getElementById(activeConversationId);
+        var hasMatches = conversationSearchMatches.length > 0;
+
+        if (controls) {
+          controls.style.display = jsonData.length > 0 ? 'flex' : 'none';
+        }
+        if (input) {
+          input.disabled = !hasActiveConversation;
+          if (input.value !== conversationSearchQuery) {
+            input.value = conversationSearchQuery;
+          }
+        }
+        if (matchCount) {
+          matchCount.textContent = hasMatches
+            ? (currentConversationMatchIndex + 1) + ' of ' + conversationSearchMatches.length
+            : '0 of 0';
+        }
+        if (prevBtn) prevBtn.disabled = !hasMatches;
+        if (nextBtn) nextBtn.disabled = !hasMatches;
+      }
+
+      function clearConversationSearchHighlights(scope) {
+        if (!scope) return;
+        var marks = scope.querySelectorAll('mark.conversation-search-match');
+        for (var i = marks.length - 1; i >= 0; i--) {
+          var mark = marks[i];
+          var parent = mark.parentNode;
+          if (!parent) continue;
+          parent.replaceChild(document.createTextNode(mark.textContent), mark);
+          parent.normalize();
+        }
+      }
+
+      function collectConversationSearchTextNodes(section) {
+        var nodes = [];
+        var bodies = section ? section.querySelectorAll('.message-body') : [];
+        for (var i = 0; i < bodies.length; i++) {
+          var walker = document.createTreeWalker(bodies[i], NodeFilter.SHOW_TEXT, {
+            acceptNode: function(node) {
+              return node.nodeValue.trim()
+                ? NodeFilter.FILTER_ACCEPT
+                : NodeFilter.FILTER_REJECT;
+            }
+          });
+          var node = walker.nextNode();
+          while (node) {
+            nodes.push(node);
+            node = walker.nextNode();
+          }
+        }
+        return nodes;
+      }
+
+      function selectConversationSearchMatch(index) {
+        if (conversationSearchMatches.length === 0) {
+          currentConversationMatchIndex = -1;
+          updateConversationSearchControls();
+          return;
+        }
+
+        if (currentConversationMatchIndex >= 0 && conversationSearchMatches[currentConversationMatchIndex]) {
+          conversationSearchMatches[currentConversationMatchIndex].classList.remove('current');
+        }
+        currentConversationMatchIndex = (index + conversationSearchMatches.length) % conversationSearchMatches.length;
+        var currentMatch = conversationSearchMatches[currentConversationMatchIndex];
+        currentMatch.classList.add('current');
+        currentMatch.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        updateConversationSearchControls();
+      }
+
+      function runConversationSearch() {
+        var root = document.getElementById('root');
+        clearConversationSearchHighlights(root);
+        conversationSearchMatches = [];
+        currentConversationMatchIndex = -1;
+
+        var query = conversationSearchQuery.trim();
+        var section = document.getElementById(activeConversationId);
+        if (!query || !section) {
+          updateConversationSearchControls();
+          return;
+        }
+
+        var queryLower = query.toLowerCase();
+        var textNodes = collectConversationSearchTextNodes(section);
+        for (var i = 0; i < textNodes.length; i++) {
+          var textNode = textNodes[i];
+          var text = textNode.nodeValue;
+          var textLower = text.toLowerCase();
+          var start = 0;
+          var index = textLower.indexOf(queryLower, start);
+          if (index === -1) continue;
+
+          var fragment = document.createDocumentFragment();
+          while (index !== -1) {
+            if (index > start) {
+              fragment.appendChild(document.createTextNode(text.slice(start, index)));
+            }
+
+            var mark = document.createElement('mark');
+            mark.className = 'conversation-search-match';
+            mark.textContent = text.slice(index, index + query.length);
+            fragment.appendChild(mark);
+            conversationSearchMatches.push(mark);
+
+            start = index + query.length;
+            index = textLower.indexOf(queryLower, start);
+          }
+
+          if (start < text.length) {
+            fragment.appendChild(document.createTextNode(text.slice(start)));
+          }
+          textNode.parentNode.replaceChild(fragment, textNode);
+        }
+
+        if (conversationSearchMatches.length > 0) {
+          selectConversationSearchMatch(0);
+        } else {
+          updateConversationSearchControls();
+        }
+      }
+
+      function setActiveConversation(conversationId) {
+        if (conversationId === activeConversationId) {
+          updateConversationSearchControls();
+          return;
+        }
+
+        activeConversationId = conversationId;
+        conversationSearchQuery = '';
+        conversationSearchMatches = [];
+        currentConversationMatchIndex = -1;
+        clearConversationSearchHighlights(document.getElementById('root'));
+        updateConversationSearchControls();
+        renderThreadList();
       }
 
       function getFilteredConversations() {
@@ -647,6 +862,10 @@
 
         var conversations = getFilteredConversations();
         if (conversations.length === 0) {
+          activeConversationId = null;
+          conversationSearchQuery = '';
+          conversationSearchMatches = [];
+          currentConversationMatchIndex = -1;
           if (jsonData.length > 0) {
             var emptyState = document.createElement('div');
             emptyState.className = 'empty-state';
@@ -656,6 +875,7 @@
             root.appendChild(emptyState);
           }
           updatePaginationControls();
+          updateConversationSearchControls();
           renderThreadList();
           setImportUiState(jsonData.length > 0);
           return;
@@ -760,9 +980,21 @@
           }
         }
 
+        if (!document.getElementById(activeConversationId) && renderedConversations.length > 0) {
+          activeConversationId = renderedConversations[0].id;
+          conversationSearchQuery = '';
+          conversationSearchMatches = [];
+          currentConversationMatchIndex = -1;
+        }
+
         updatePaginationControls();
         updateSearchControls();
         renderThreadList();
+        if (conversationSearchQuery.trim()) {
+          runConversationSearch();
+        } else {
+          updateConversationSearchControls();
+        }
       }
 
       function renderData(dataArray, assets) {
@@ -772,6 +1004,10 @@
         assetsJson = assets || {};
         currentPage = 1;
         searchQuery = '';
+        activeConversationId = null;
+        conversationSearchQuery = '';
+        conversationSearchMatches = [];
+        currentConversationMatchIndex = -1;
         if (searchDebounceTimer) {
           clearTimeout(searchDebounceTimer);
           searchDebounceTimer = null;
@@ -848,12 +1084,23 @@
             if (!target || target === threadList) return;
             var sectionId = target.getAttribute('data-target-id');
             if (!sectionId) return;
+            setActiveConversation(sectionId);
             var conversationSection = document.getElementById(sectionId);
             if (conversationSection && mainArea) {
               mainArea.scrollTo({
                 top: conversationSection.offsetTop - 16,
                 behavior: 'smooth'
               });
+            }
+          });
+        }
+
+        var root = document.getElementById('root');
+        if (root) {
+          root.addEventListener('click', function(event) {
+            var conversation = event.target.closest ? event.target.closest('.conversation') : null;
+            if (conversation && conversation.id) {
+              setActiveConversation(conversation.id);
             }
           });
         }
@@ -870,6 +1117,27 @@
               applyFiltersAndRenderAfterPaint();
               if (mainArea) mainArea.scrollTo({ top: 0 });
             }, 275);
+          });
+        }
+
+        var conversationSearchInput = document.getElementById('conversationSearchInput');
+        if (conversationSearchInput) {
+          conversationSearchInput.addEventListener('input', function() {
+            conversationSearchQuery = conversationSearchInput.value || '';
+            runConversationSearch();
+          });
+        }
+
+        var conversationSearchPrevBtn = document.getElementById('conversationSearchPrevBtn');
+        var conversationSearchNextBtn = document.getElementById('conversationSearchNextBtn');
+        if (conversationSearchPrevBtn) {
+          conversationSearchPrevBtn.addEventListener('click', function() {
+            selectConversationSearchMatch(currentConversationMatchIndex - 1);
+          });
+        }
+        if (conversationSearchNextBtn) {
+          conversationSearchNextBtn.addEventListener('click', function() {
+            selectConversationSearchMatch(currentConversationMatchIndex + 1);
           });
         }
 
@@ -1031,6 +1299,12 @@
             <span id="pageLoadingIndicator" aria-live="polite">Loading page...</span>
             <button id="nextPageBtn" type="button">Next</button>
             <button id="lastPageBtn" type="button">Last</button>
+          </div>
+          <div id="conversationSearchControls" aria-label="Search selected conversation">
+            <input id="conversationSearchInput" type="search" placeholder="Search selected conversation" autocomplete="off" disabled>
+            <button id="conversationSearchPrevBtn" type="button" disabled>Previous</button>
+            <span id="conversationMatchCount" aria-live="polite">0 of 0</span>
+            <button id="conversationSearchNextBtn" type="button" disabled>Next</button>
           </div>
           <div id="root"></div>
         </div>
