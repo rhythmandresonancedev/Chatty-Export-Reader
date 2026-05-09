@@ -166,6 +166,51 @@
         margin-bottom: 12px;
       }
 
+      #paginationControls {
+        display: none;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+        color: #DDD;
+      }
+
+      #paginationControls label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.9rem;
+        opacity: 0.85;
+      }
+
+      #pageSizeSelect {
+        background: #222222;
+        color: #DDD;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 5px;
+        padding: 7px 8px;
+      }
+
+      #paginationControls button {
+        background: #222222;
+        color: #DDD;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 5px;
+        cursor: pointer;
+      }
+
+      #paginationControls button:disabled {
+        cursor: default;
+        opacity: 0.4;
+      }
+
+      #pageIndicator {
+        min-width: 140px;
+        text-align: center;
+        font-size: 0.9rem;
+        opacity: 0.85;
+      }
+
       button {
         padding: 8px 12px;
         font-size: 14px;
@@ -302,7 +347,10 @@
     <script>
       var jsonData = [];
       var assetsJson = {};
+      var conversationsForDisplay = [];
       var renderedConversations = [];
+      var currentPage = 1;
+      var pageSize = 25;
 
       function showLoading(text) {
         var el = document.getElementById('loadingOverlay');
@@ -429,47 +477,70 @@
         }
       }
 
-      function renderData(dataArray, assets) {
+      function getFilteredConversations() {
+        return conversationsForDisplay;
+      }
+
+      function getTotalPages() {
+        var total = getFilteredConversations().length;
+        return Math.max(1, Math.ceil(total / pageSize));
+      }
+
+      function updatePaginationControls() {
+        var paginationControls = document.getElementById('paginationControls');
+        var pageSizeSelect = document.getElementById('pageSizeSelect');
+        var firstPageBtn = document.getElementById('firstPageBtn');
+        var prevPageBtn = document.getElementById('prevPageBtn');
+        var nextPageBtn = document.getElementById('nextPageBtn');
+        var lastPageBtn = document.getElementById('lastPageBtn');
+        var pageIndicator = document.getElementById('pageIndicator');
+        var totalConversations = getFilteredConversations().length;
+        var totalPages = getTotalPages();
+        var hasConversations = totalConversations > 0;
+
+        if (paginationControls) {
+          paginationControls.style.display = hasConversations ? 'flex' : 'none';
+        }
+        if (pageSizeSelect) {
+          pageSizeSelect.value = String(pageSize);
+        }
+        if (pageIndicator) {
+          var start = hasConversations ? ((currentPage - 1) * pageSize) + 1 : 0;
+          var end = Math.min(currentPage * pageSize, totalConversations);
+          pageIndicator.textContent = hasConversations
+            ? 'Page ' + currentPage + ' of ' + totalPages + ' (' + start + '-' + end + ' of ' + totalConversations + ')'
+            : 'Page 0 of 0';
+        }
+        if (firstPageBtn) firstPageBtn.disabled = !hasConversations || currentPage <= 1;
+        if (prevPageBtn) prevPageBtn.disabled = !hasConversations || currentPage <= 1;
+        if (nextPageBtn) nextPageBtn.disabled = !hasConversations || currentPage >= totalPages;
+        if (lastPageBtn) lastPageBtn.disabled = !hasConversations || currentPage >= totalPages;
+      }
+
+      function renderCurrentPage() {
         var root = document.getElementById('root');
         var threadList = document.getElementById('threadList');
         root.innerHTML = '';
         if (threadList) threadList.innerHTML = '';
-        assetsJson = assets || {};
         renderedConversations = [];
 
-        if (!Array.isArray(dataArray) || dataArray.length === 0) {
+        var conversations = getFilteredConversations();
+        if (conversations.length === 0) {
+          updatePaginationControls();
           setImportUiState(false);
           return;
         }
 
         setImportUiState(true);
+        var totalPages = getTotalPages();
+        currentPage = Math.min(Math.max(currentPage, 1), totalPages);
+        var startIndex = (currentPage - 1) * pageSize;
+        var pageConversations = conversations.slice(startIndex, startIndex + pageSize);
 
-        var conversationsToRender = [];
-        for (var i = 0; i < dataArray.length; i++) {
-          var conversation = dataArray[i];
-          if (!conversation) continue;
-          var messages = getConversationMessages(conversation);
-          var conversationTitle = conversation.title || 'Untitled';
-          var conversationKey = conversation.conversation_id || conversation.id || conversationTitle;
-          var firstMessageTs = messages.length > 0 ? (Number(messages[0].timestampRaw) || 0) : 0;
-          var fallbackTs = Number(conversation.create_time) || Number(conversation.update_time) || 0;
-          var sortTs = firstMessageTs || fallbackTs;
-          conversationsToRender.push({
-            title: conversationTitle,
-            key: conversationKey,
-            sortTimestampRaw: sortTs,
-            messages: messages
-          });
-        }
-
-        conversationsToRender.sort(function(a, b) {
-          return a.sortTimestampRaw - b.sortTimestampRaw;
-        });
-
-        for (var c = 0; c < conversationsToRender.length; c++) {
-          var current = conversationsToRender[c];
-          var conversationId = 'conversation-' + c;
-          var conversationNumber = c + 1;
+        for (var c = 0; c < pageConversations.length; c++) {
+          var current = pageConversations[c];
+          var conversationNumber = startIndex + c + 1;
+          var conversationId = 'conversation-' + (conversationNumber - 1);
           renderedConversations.push({
             id: conversationId,
             number: conversationNumber,
@@ -559,7 +630,44 @@
           }
         }
 
+        updatePaginationControls();
         renderThreadList();
+      }
+
+      function renderData(dataArray, assets) {
+        jsonData = [];
+        conversationsForDisplay = [];
+        assetsJson = assets || {};
+        currentPage = 1;
+
+        if (!Array.isArray(dataArray) || dataArray.length === 0) {
+          renderCurrentPage();
+          return;
+        }
+
+        for (var i = 0; i < dataArray.length; i++) {
+          var conversation = dataArray[i];
+          if (!conversation) continue;
+          jsonData.push(conversation);
+          var messages = getConversationMessages(conversation);
+          var conversationTitle = conversation.title || 'Untitled';
+          var conversationKey = conversation.conversation_id || conversation.id || conversationTitle;
+          var firstMessageTs = messages.length > 0 ? (Number(messages[0].timestampRaw) || 0) : 0;
+          var fallbackTs = Number(conversation.create_time) || Number(conversation.update_time) || 0;
+          var sortTs = firstMessageTs || fallbackTs;
+          conversationsForDisplay.push({
+            title: conversationTitle,
+            key: conversationKey,
+            sortTimestampRaw: sortTs,
+            messages: messages
+          });
+        }
+
+        conversationsForDisplay.sort(function(a, b) {
+          return a.sortTimestampRaw - b.sortTimestampRaw;
+        });
+
+        renderCurrentPage();
       }
 
       window.addEventListener('DOMContentLoaded', function() {
@@ -606,6 +714,48 @@
                 behavior: 'smooth'
               });
             }
+          });
+        }
+
+        var pageSizeSelect = document.getElementById('pageSizeSelect');
+        if (pageSizeSelect) {
+          pageSizeSelect.addEventListener('change', function() {
+            pageSize = Number(pageSizeSelect.value) || 25;
+            currentPage = 1;
+            renderCurrentPage();
+            if (mainArea) mainArea.scrollTo({ top: 0 });
+          });
+        }
+
+        function goToPage(page) {
+          currentPage = Math.min(Math.max(page, 1), getTotalPages());
+          renderCurrentPage();
+          if (mainArea) mainArea.scrollTo({ top: 0 });
+        }
+
+        var firstPageBtn = document.getElementById('firstPageBtn');
+        var prevPageBtn = document.getElementById('prevPageBtn');
+        var nextPageBtn = document.getElementById('nextPageBtn');
+        var lastPageBtn = document.getElementById('lastPageBtn');
+
+        if (firstPageBtn) {
+          firstPageBtn.addEventListener('click', function() {
+            goToPage(1);
+          });
+        }
+        if (prevPageBtn) {
+          prevPageBtn.addEventListener('click', function() {
+            goToPage(currentPage - 1);
+          });
+        }
+        if (nextPageBtn) {
+          nextPageBtn.addEventListener('click', function() {
+            goToPage(currentPage + 1);
+          });
+        }
+        if (lastPageBtn) {
+          lastPageBtn.addEventListener('click', function() {
+            goToPage(getTotalPages());
           });
         }
 
@@ -706,6 +856,21 @@
         <div class="content">
           <div id="controls">
             <button id="openFileBtn">Open Conversation</button>
+          </div>
+          <div id="paginationControls" aria-label="Pagination">
+            <label for="pageSizeSelect">
+              Page size
+              <select id="pageSizeSelect">
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+            <button id="firstPageBtn" type="button">First</button>
+            <button id="prevPageBtn" type="button">Previous</button>
+            <span id="pageIndicator" aria-live="polite">Page 0 of 0</span>
+            <button id="nextPageBtn" type="button">Next</button>
+            <button id="lastPageBtn" type="button">Last</button>
           </div>
           <div id="root"></div>
         </div>
