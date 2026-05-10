@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 
 let mainWindow = null;
 let importMenuItem = null;
@@ -29,6 +30,46 @@ function buildAppMenu() {
   //const menu = Menu.buildFromTemplate(template);
   //Menu.setApplicationMenu(menu);
   //importMenuItem = menu.getMenuItemById('importConversation');
+}
+
+function buildLocalAssetMap(baseDir) {
+  const assetMap = {};
+  if (!baseDir || !fs.existsSync(baseDir)) return assetMap;
+
+  const assetExts = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif', '.mp4', '.webm', '.mp3', '.wav', '.m4a']);
+  function scanDir(dir, depth) {
+    if (depth > 2) return;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (e) {
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        scanDir(fullPath, depth + 1);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!assetExts.has(ext)) continue;
+
+      const fileUrl = pathToFileURL(fullPath).href;
+      const stem = path.basename(entry.name, ext);
+      const unsanitizedStem = stem.replace(/-sanitized$/, '');
+
+      assetMap[entry.name] = fileUrl;
+      assetMap[stem] = fileUrl;
+      assetMap[unsanitizedStem] = fileUrl;
+      assetMap['sediment://' + unsanitizedStem] = fileUrl;
+    }
+  }
+
+  scanDir(baseDir, 0);
+
+  return assetMap;
 }
 
 function createWindow () {
@@ -105,7 +146,7 @@ ipcMain.handle('dialog:openFile', async (event) => {
     const content = await fs.promises.readFile(filePath, 'utf8');
     let parsed = null;
     try { parsed = JSON.parse(content); } catch (e) { return { error: 'Invalid JSON: ' + e.message }; }
-    return { filePath, data: parsed };
+    return { filePath, data: parsed, assets: buildLocalAssetMap(path.dirname(filePath)) };
   } catch (err) {
     return { error: err.message };
   }
@@ -155,7 +196,7 @@ ipcMain.handle('file:loadDefault', async () => {
     const content = await fs.promises.readFile(defaultFile, 'utf8');
     let parsed = null;
     try { parsed = JSON.parse(content); } catch (e) { return { error: 'Invalid JSON: ' + e.message }; }
-    return { filePath: defaultFile, data: parsed };
+    return { filePath: defaultFile, data: parsed, assets: buildLocalAssetMap(path.dirname(defaultFile)) };
   } catch (err) {
     return { error: err.message };
   }

@@ -508,7 +508,7 @@
       }
 
       body:not(.edit-mode) .message.edit-softRedact .message-body > * {
-        filter: blur(5px);
+        filter: blur(20px);
         user-select: none;
         transition: filter 0.15s ease;
       }
@@ -576,6 +576,30 @@
         font-family: "Play", sans-serif;
         font-weight: 300;
         font-style: normal;
+      }
+
+      .message-image-wrap {
+        margin: 10px 0;
+      }
+
+      .message-image {
+        display: block;
+        max-width: 100%;
+        max-height: 640px;
+        width: auto;
+        height: auto;
+        border-radius: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        object-fit: contain;
+        background: rgba(0, 0, 0, 0.18);
+      }
+
+      .asset-placeholder {
+        display: inline-block;
+        margin: 6px 0;
+        color: rgba(221, 221, 221, 0.58);
+        font-family: system-ui, 'Segoe UI', sans-serif;
+        font-size: 0.85rem;
       }
 
       .author {
@@ -760,8 +784,10 @@
           if (
             node.message &&
             node.message.content &&
-            node.message.content.parts &&
-            node.message.content.parts.length > 0 &&
+            (
+              (node.message.content.parts && node.message.content.parts.length > 0) ||
+              (metadata.attachments && metadata.attachments.length > 0)
+            ) &&
             (node.message.author.role !== 'system' || metadata.is_user_system_message)
           ) {
             var author = node.message.author.role;
@@ -773,14 +799,17 @@
 
             if (node.message.content.content_type == 'text' || node.message.content.content_type == 'multimodal_text') {
               var parts = [];
-              for (var i = 0; i < node.message.content.parts.length; i++) {
-                var part = node.message.content.parts[i];
+              var seenAssetPointers = {};
+              var contentParts = node.message.content.parts || [];
+              for (var i = 0; i < contentParts.length; i++) {
+                var part = contentParts[i];
                 if (typeof part === 'string' && part.length > 0) {
                   parts.push({ text: part });
                 } else if (part.content_type == 'audio_transcription') {
                   parts.push({ transcript: part.text });
                 } else if (part.content_type == 'audio_asset_pointer' || part.content_type == 'image_asset_pointer' || part.content_type == 'video_container_asset_pointer') {
                   parts.push({ asset: part });
+                  if (part.asset_pointer) seenAssetPointers[part.asset_pointer] = true;
                 } else if (part.content_type == 'real_time_user_audio_video_asset_pointer') {
                   if (part.audio_asset_pointer) {
                     parts.push({ asset: part.audio_asset_pointer });
@@ -792,6 +821,29 @@
                   for (var j = 0; j < frames.length; j++) {
                     parts.push({ asset: frames[j] });
                   }
+                }
+              }
+
+              var attachments = metadata.attachments || [];
+              for (var k = 0; k < attachments.length; k++) {
+                var attachment = attachments[k];
+                if (!attachment) continue;
+                var attachmentPointer = attachment.asset_pointer || attachment.id || attachment.file_id || attachment.name || '';
+                var attachmentKey = attachment.asset_pointer || (attachment.id ? 'sediment://' + attachment.id : attachmentPointer);
+                var isImageAttachment = attachment.mime_type && attachment.mime_type.indexOf('image/') === 0;
+                if (isImageAttachment && attachmentKey && !seenAssetPointers[attachmentKey]) {
+                  parts.push({
+                    asset: {
+                      content_type: 'image_asset_pointer',
+                      asset_pointer: attachmentKey,
+                      id: attachment.id,
+                      name: attachment.name,
+                      mime_type: attachment.mime_type,
+                      width: attachment.width,
+                      height: attachment.height
+                    }
+                  });
+                  seenAssetPointers[attachmentKey] = true;
                 }
               }
 
@@ -834,6 +886,52 @@
         } catch (e) {
           return false;
         }
+      }
+
+      function mergeAssetMaps() {
+        var merged = {};
+        for (var i = 0; i < arguments.length; i++) {
+          var source = arguments[i] || {};
+          for (var key in source) {
+            if (Object.prototype.hasOwnProperty.call(source, key)) {
+              merged[key] = source[key];
+            }
+          }
+        }
+        return merged;
+      }
+
+      function getAssetId(asset) {
+        if (!asset) return '';
+        var pointer = asset.asset_pointer || asset.id || asset.file_id || asset.name || '';
+        if (typeof pointer !== 'string') return '';
+        return pointer.replace(/^sediment:\/\//, '');
+      }
+
+      function resolveAssetUrl(asset) {
+        if (!asset) return '';
+        var pointer = asset.asset_pointer || asset.id || asset.file_id || asset.name || '';
+        var assetId = getAssetId(asset);
+        var candidates = [
+          pointer,
+          assetId,
+          assetId + '-sanitized',
+          asset.name
+        ];
+
+        for (var i = 0; i < candidates.length; i++) {
+          var candidate = candidates[i];
+          if (candidate && assetsJson && assetsJson[candidate]) return assetsJson[candidate];
+        }
+
+        return '';
+      }
+
+      function isImageAsset(asset, resolvedUrl) {
+        if (!asset) return false;
+        if (asset.content_type === 'image_asset_pointer') return true;
+        if (asset.mime_type && asset.mime_type.indexOf('image/') === 0) return true;
+        return /\.(png|jpe?g|webp|gif|bmp|avif)(\?|#|$)/i.test(resolvedUrl || asset.name || asset.asset_pointer || '');
       }
 
       function formatTimestamp(timestampRaw) {
@@ -1206,9 +1304,26 @@
         }
 
         if (!part.asset) return;
-        var link = assetsJson[part.asset.asset_pointer];
+        var link = resolveAssetUrl(part.asset);
         var filePart = document.createElement('div');
-        if (link && isSafeLink(link)) {
+        if (link && isSafeLink(link) && isImageAsset(part.asset, link)) {
+          filePart.className = 'message-image-wrap';
+          var image = document.createElement('img');
+          image.className = 'message-image';
+          image.src = link;
+          image.alt = 'Image attachment';
+          image.loading = 'lazy';
+          image.onerror = function() {
+            var placeholder = document.createElement('span');
+            placeholder.className = 'asset-placeholder';
+            placeholder.textContent = '[Image unavailable]';
+            if (this.parentNode) this.parentNode.replaceChild(placeholder, this);
+          };
+          filePart.appendChild(image);
+        } else if (isImageAsset(part.asset, link)) {
+          filePart.className = 'asset-placeholder';
+          filePart.textContent = '[Image unavailable]';
+        } else if (link && isSafeLink(link)) {
           filePart.appendChild(document.createTextNode('[File]: '));
           var anchor = document.createElement('a');
           anchor.textContent = link;
@@ -1760,10 +1875,11 @@
               toRender = parsed;
             } else if (parsed && parsed.conversations) {
               toRender = parsed.conversations;
-              assets = parsed.assets || null;
+              assets = mergeAssetMaps(parsed.assets, res.assets);
             } else if (parsed) {
               toRender = [parsed];
             }
+            if (!assets) assets = res.assets || null;
             renderData(toRender, assets, getFileNameFromPath(res.filePath));
           } catch (e) {
             console.error(e);
@@ -1795,10 +1911,11 @@
               toRender = parsed;
             } else if (parsed && parsed.conversations) {
               toRender = parsed.conversations;
-              assets = parsed.assets || null;
+              assets = mergeAssetMaps(parsed.assets, res.assets);
             } else if (parsed) {
               toRender = [parsed];
             }
+            if (!assets) assets = res.assets || null;
             renderData(toRender, assets, getFileNameFromPath(res.filePath));
           }).catch(function() {}).finally(function() {
             hideLoading();
