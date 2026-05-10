@@ -166,6 +166,17 @@
         line-height: 1.25rem;
       }
 
+      .thread-title-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .thread-title-row .title {
+        flex: 1;
+        min-width: 0;
+      }
+
       .thread-item .meta {
         opacity: 0.6;
         font-size: 0.75rem;
@@ -384,6 +395,22 @@
         accent-color: #DDD;
       }
 
+      .publish-edit-control {
+        display: none;
+      }
+
+      body.edit-mode .publish-edit-control {
+        display: inline-flex;
+      }
+
+      .publish-edit-container {
+        display: none;
+      }
+
+      body.edit-mode .publish-edit-container {
+        display: flex;
+      }
+
       #root {
         display: flex;
         flex-direction: column;
@@ -454,16 +481,56 @@
         font-size: 0.8rem;
       }
 
-      .message.edit-redact {
-        outline: 1px solid rgba(255, 80, 80, 0.45);
+      body:not(.edit-mode) .message.edit-redact {
+        background: rgba(10, 10, 10, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.12);
       }
 
-      .message.edit-softRedact {
-        outline: 1px solid rgba(255, 190, 80, 0.45);
+      body:not(.edit-mode) .message.edit-redact .message-body {
+        display: none;
       }
 
-      .message.edit-focus {
-        outline: 1px solid rgba(120, 200, 255, 0.55);
+      body:not(.edit-mode) .message.edit-redact::after {
+        content: "[REDACTED]";
+        display: block;
+        color: rgba(238, 238, 238, 0.74);
+        font-family: system-ui, 'Segoe UI', sans-serif;
+        font-size: 0.9rem;
+        letter-spacing: 0.08em;
+        text-align: center;
+        padding: 14px 0;
+      }
+
+      body:not(.edit-mode) .message.edit-softRedact {
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.035);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      body:not(.edit-mode) .message.edit-softRedact .message-body {
+        filter: blur(5px);
+        user-select: none;
+        transition: filter 0.15s ease;
+      }
+
+      body:not(.edit-mode) .message.edit-softRedact.soft-redact-revealed .message-body {
+        filter: none;
+        user-select: auto;
+      }
+
+      body:not(.edit-mode) .message.edit-softRedact::after {
+        content: "Click to reveal/hide";
+        display: block;
+        margin-top: 8px;
+        font-family: system-ui, 'Segoe UI', sans-serif;
+        font-size: 0.78rem;
+        color: rgba(221, 221, 221, 0.55);
+      }
+
+      body:not(.edit-mode) .message.edit-focus {
+        background: rgba(180, 205, 190, 0.08);
+        border: 1px solid rgba(190, 220, 205, 0.2);
+        box-shadow: inset 3px 0 0 rgba(190, 220, 205, 0.35);
       }
 
       .message {
@@ -772,16 +839,38 @@
         var fragment = document.createDocumentFragment();
         for (var i = 0; i < renderedConversations.length; i++) {
           var conversation = renderedConversations[i];
-          var item = document.createElement('button');
+          var item = document.createElement('div');
           item.className = 'thread-item';
           if (conversation.id === activeConversationId) {
             item.className += ' active';
           }
-          item.type = 'button';
+          item.setAttribute('role', 'button');
+          item.setAttribute('tabindex', '0');
           item.setAttribute('data-target-id', conversation.id);
-          item.innerHTML =
-            '<div class="title">' + conversation.number + '. ' + escapeHtml(conversation.title) + '</div>' +
-            '<div class="meta">' + formatTimestamp(conversation.timestampRaw) + '</div>';
+
+          var titleRow = document.createElement('div');
+          titleRow.className = 'thread-title-row';
+
+          var publishLabel = document.createElement('label');
+          publishLabel.className = 'publish-toggle publish-edit-control';
+          var publishCheckbox = document.createElement('input');
+          publishCheckbox.type = 'checkbox';
+          publishCheckbox.setAttribute('data-edit-action', 'thread-conversation-publish');
+          publishCheckbox.setAttribute('data-conversation-key', conversation.key);
+          publishCheckbox.checked = !!getConversationEdit(conversation.key).publish;
+          publishLabel.appendChild(publishCheckbox);
+          titleRow.appendChild(publishLabel);
+
+          var title = document.createElement('div');
+          title.className = 'title';
+          title.textContent = conversation.number + '. ' + conversation.title;
+          titleRow.appendChild(title);
+          item.appendChild(titleRow);
+
+          var meta = document.createElement('div');
+          meta.className = 'meta';
+          meta.textContent = formatTimestamp(conversation.timestampRaw);
+          item.appendChild(meta);
           fragment.appendChild(item);
         }
         threadList.appendChild(fragment);
@@ -1208,9 +1297,9 @@
 
         var conversationEdit = getConversationEdit(conversation.key);
         var meta = document.createElement('div');
-        meta.className = 'conversation-meta';
+        meta.className = 'conversation-meta publish-edit-container';
         var publishLabel = document.createElement('label');
-        publishLabel.className = 'publish-toggle';
+        publishLabel.className = 'publish-toggle publish-edit-control';
         var publishCheckbox = document.createElement('input');
         publishCheckbox.type = 'checkbox';
         publishCheckbox.setAttribute('data-edit-action', 'conversation-publish');
@@ -1267,6 +1356,7 @@
           renderedConversations.push({
             id: conversationId,
             number: conversationNumber,
+            key: current.key,
             title: current.title,
             timestampRaw: current.sortTimestampRaw
           });
@@ -1408,12 +1498,14 @@
             var isEditMode = editBtn.classList.toggle('active');
             document.body.classList.toggle('edit-mode', isEditMode);
             editBtn.setAttribute('aria-pressed', isEditMode ? 'true' : 'false');
+            renderThreadList();
           });
         }
 
         var threadList = dom.threadList;
         if (threadList) {
           threadList.addEventListener('click', function(event) {
+            if (event.target && event.target.closest && event.target.closest('[data-edit-action]')) return;
             var target = event.target;
             while (target && target !== threadList && !target.classList.contains('thread-item')) {
               target = target.parentElement;
@@ -1430,11 +1522,32 @@
               });
             }
           });
+
+          threadList.addEventListener('change', function(event) {
+            var target = event.target;
+            if (!target || !target.getAttribute) return;
+            if (target.getAttribute('data-edit-action') !== 'thread-conversation-publish') return;
+            var conversationKey = target.getAttribute('data-conversation-key');
+            if (!conversationKey) return;
+            getConversationEdit(conversationKey).publish = !!target.checked;
+            var conversationCheckboxes = document.querySelectorAll('.conversation [data-edit-action="conversation-publish"]');
+            for (var cb = 0; cb < conversationCheckboxes.length; cb++) {
+              var conversationEl = conversationCheckboxes[cb].closest ? conversationCheckboxes[cb].closest('.conversation') : null;
+              if (conversationEl && conversationEl.getAttribute('data-conversation-key') === conversationKey) {
+                conversationCheckboxes[cb].checked = !!target.checked;
+              }
+            }
+            setEditStatus('Unsaved edit changes');
+          });
         }
 
         var root = dom.root;
         if (root) {
           root.addEventListener('click', function(event) {
+            var softMessage = event.target.closest ? event.target.closest('.message.edit-softRedact') : null;
+            if (softMessage && !document.body.classList.contains('edit-mode')) {
+              softMessage.classList.toggle('soft-redact-revealed');
+            }
             var conversation = event.target.closest ? event.target.closest('.conversation') : null;
             if (conversation && conversation.id) {
               setActiveConversation(conversation.id);
@@ -1450,6 +1563,12 @@
               var conversationKey = conversationEl ? conversationEl.getAttribute('data-conversation-key') : '';
               if (!conversationKey) return;
               getConversationEdit(conversationKey).publish = !!target.checked;
+              var threadCheckboxes = document.querySelectorAll('#threadList [data-edit-action="thread-conversation-publish"]');
+              for (var tc = 0; tc < threadCheckboxes.length; tc++) {
+                if (threadCheckboxes[tc].getAttribute('data-conversation-key') === conversationKey) {
+                  threadCheckboxes[tc].checked = !!target.checked;
+                }
+              }
               setEditStatus('Unsaved edit changes');
             } else if (editAction === 'message-action') {
               var messageEl = target.closest ? target.closest('.message') : null;
@@ -1460,7 +1579,7 @@
               var messageEdit = getMessageEdit(messageConversationKey, messageKey);
               messageEdit.action = target.value || 'none';
               messageEl.className = messageEl.className
-                .replace(/\sedit-redact|\sedit-softRedact|\sedit-focus/g, '') +
+                .replace(/\sedit-redact|\sedit-softRedact|\sedit-focus|\ssoft-redact-revealed/g, '') +
                 getMessageActionClass(messageEdit.action);
               setEditStatus('Unsaved edit changes');
             }
