@@ -486,11 +486,11 @@
         border: 1px solid rgba(255, 255, 255, 0.12);
       }
 
-      body:not(.edit-mode) .message.edit-redact .message-body {
+      body:not(.edit-mode) .message.edit-redact .message-body > * {
         display: none;
       }
 
-      body:not(.edit-mode) .message.edit-redact::after {
+      body:not(.edit-mode) .message.edit-redact .message-body::after {
         content: "[REDACTED]";
         display: block;
         color: rgba(238, 238, 238, 0.74);
@@ -507,18 +507,18 @@
         border: 1px solid rgba(255, 255, 255, 0.1);
       }
 
-      body:not(.edit-mode) .message.edit-softRedact .message-body {
+      body:not(.edit-mode) .message.edit-softRedact .message-body > * {
         filter: blur(5px);
         user-select: none;
         transition: filter 0.15s ease;
       }
 
-      body:not(.edit-mode) .message.edit-softRedact.soft-redact-revealed .message-body {
+      body:not(.edit-mode) .message.edit-softRedact.soft-redact-revealed .message-body > * {
         filter: none;
         user-select: auto;
       }
 
-      body:not(.edit-mode) .message.edit-softRedact::after {
+      body:not(.edit-mode) .message.edit-softRedact .message-body::after {
         content: "Click to reveal/hide";
         display: block;
         margin-top: 8px;
@@ -531,6 +531,25 @@
         background: rgba(180, 205, 190, 0.08);
         border: 1px solid rgba(190, 220, 205, 0.2);
         box-shadow: inset 3px 0 0 rgba(190, 220, 205, 0.35);
+      }
+
+      .message-preview-note {
+        display: none;
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        color: rgba(221, 221, 221, 0.58);
+        font-family: system-ui, 'Segoe UI', sans-serif;
+        font-size: 0.82rem;
+        line-height: 1.35;
+        letter-spacing: 0;
+        white-space: normal;
+      }
+
+      body:not(.edit-mode) .message.edit-redact .message-preview-note,
+      body:not(.edit-mode) .message.edit-softRedact .message-preview-note,
+      body:not(.edit-mode) .message.edit-focus .message-preview-note {
+        display: block;
       }
 
       .message {
@@ -1210,6 +1229,22 @@
         return '';
       }
 
+      function syncMessagePreviewNote(messageEl, messageEdit) {
+        if (!messageEl || !messageEdit) return;
+        var existing = messageEl.querySelector('.message-preview-note');
+        var shouldShow = !!(messageEdit.note && messageEdit.action && messageEdit.action !== 'none');
+        if (!shouldShow) {
+          if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+          return;
+        }
+        if (!existing) {
+          existing = document.createElement('div');
+          existing.className = 'message-preview-note';
+          messageEl.appendChild(existing);
+        }
+        existing.textContent = messageEdit.note;
+      }
+
       function renderMessageElement(item, conversationKey, messageIndex) {
         var messageKey = item.id || ('message-' + messageIndex);
         var messageEdit = getMessageEdit(conversationKey, messageKey);
@@ -1282,6 +1317,14 @@
         }
 
         message.appendChild(body);
+
+        if (messageEdit.note && messageEdit.action && messageEdit.action !== 'none') {
+          var previewNote = document.createElement('div');
+          previewNote.className = 'message-preview-note';
+          previewNote.textContent = messageEdit.note;
+          message.appendChild(previewNote);
+        }
+
         return message;
       }
 
@@ -1581,6 +1624,7 @@
               messageEl.className = messageEl.className
                 .replace(/\sedit-redact|\sedit-softRedact|\sedit-focus|\ssoft-redact-revealed/g, '') +
                 getMessageActionClass(messageEdit.action);
+              syncMessagePreviewNote(messageEl, messageEdit);
               setEditStatus('Unsaved edit changes');
             }
           });
@@ -1594,7 +1638,9 @@
             var messageConversationKey = messageEl.getAttribute('data-conversation-key');
             var messageKey = messageEl.getAttribute('data-message-key');
             if (!messageConversationKey || !messageKey) return;
-            getMessageEdit(messageConversationKey, messageKey).note = target.value || '';
+            var messageEdit = getMessageEdit(messageConversationKey, messageKey);
+            messageEdit.note = target.value || '';
+            syncMessagePreviewNote(messageEl, messageEdit);
             setEditStatus('Unsaved edit changes');
           });
         }
