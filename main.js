@@ -111,6 +111,42 @@ ipcMain.handle('dialog:openFile', async (event) => {
   }
 });
 
+ipcMain.handle('dialog:saveEdits', async (event, edits) => {
+  try {
+    const defaultPath = path.join(__dirname, 'conversation-edits.json');
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Save edit metadata',
+      defaultPath,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+    if (canceled || !filePath) return null;
+    await fs.promises.writeFile(filePath, JSON.stringify(edits || {}, null, 2), 'utf8');
+    return { filePath };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('dialog:loadEdits', async () => {
+  try {
+    const defaultPath = path.join(__dirname, 'Conversation');
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Load edit metadata',
+      defaultPath,
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+    if (canceled || !filePaths || filePaths.length === 0) return null;
+    const filePath = filePaths[0];
+    const content = await fs.promises.readFile(filePath, 'utf8');
+    let parsed = null;
+    try { parsed = JSON.parse(content); } catch (e) { return { error: 'Invalid JSON: ' + e.message }; }
+    return { filePath, data: parsed };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 // Handler: attempt to load default conversations.json in Conversation folder
 ipcMain.handle('file:loadDefault', async () => {
   try {
@@ -119,7 +155,7 @@ ipcMain.handle('file:loadDefault', async () => {
     const content = await fs.promises.readFile(defaultFile, 'utf8');
     let parsed = null;
     try { parsed = JSON.parse(content); } catch (e) { return { error: 'Invalid JSON: ' + e.message }; }
-    return { data: parsed };
+    return { filePath: defaultFile, data: parsed };
   } catch (err) {
     return { error: err.message };
   }

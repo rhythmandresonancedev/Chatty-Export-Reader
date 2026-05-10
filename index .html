@@ -300,6 +300,28 @@
         opacity: 0.85;
       }
 
+      #editsControls {
+        display: none;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+        color: #DDD;
+      }
+
+      #editsControls button {
+        background: #222222;
+        color: #DDD;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 5px;
+        cursor: pointer;
+      }
+
+      #editsStatus {
+        font-size: 0.85rem;
+        opacity: 0.72;
+      }
+
       .conversation-search-match {
         background: rgba(255, 215, 0, 0.28);
         color: inherit;
@@ -343,6 +365,25 @@
         margin: 15px auto 0;
       }
 
+      .conversation-meta {
+        display: flex;
+        justify-content: center;
+        margin-top: -24px;
+        margin-bottom: 24px;
+      }
+
+      .publish-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.9rem;
+        opacity: 0.82;
+      }
+
+      .publish-toggle input {
+        accent-color: #DDD;
+      }
+
       #root {
         display: flex;
         flex-direction: column;
@@ -364,9 +405,39 @@
         font-size: .8rem;
         display: flex;
         justify-content: left;
-        opacity: 25%;
+        align-items: center;
+        flex-wrap: wrap;
+        opacity: 45%;
         margin-bottom: 6px;
         column-gap: 10px;
+      }
+
+      .message-action {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .message-action select {
+        background: #1d1d1d;
+        color: #DDD;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 5px;
+        padding: 3px 6px;
+        font-size: 0.75rem;
+      }
+
+      .message.edit-redact {
+        outline: 1px solid rgba(255, 80, 80, 0.45);
+      }
+
+      .message.edit-softRedact {
+        outline: 1px solid rgba(255, 190, 80, 0.45);
+      }
+
+      .message.edit-focus {
+        outline: 1px solid rgba(120, 200, 255, 0.55);
       }
 
       .message {
@@ -467,6 +538,8 @@
       var conversationSearchQuery = '';
       var conversationSearchMatches = [];
       var currentConversationMatchIndex = -1;
+      var sourceExportName = '';
+      var editsState = createEmptyEditsState('');
       var dom = {};
 
       function showLoading(text) {
@@ -500,12 +573,68 @@
         dom.conversationSearchPrevBtn = document.getElementById('conversationSearchPrevBtn');
         dom.conversationSearchNextBtn = document.getElementById('conversationSearchNextBtn');
         dom.conversationMatchCount = document.getElementById('conversationMatchCount');
+        dom.editsControls = document.getElementById('editsControls');
+        dom.saveEditsBtn = document.getElementById('saveEditsBtn');
+        dom.loadEditsBtn = document.getElementById('loadEditsBtn');
+        dom.editsStatus = document.getElementById('editsStatus');
       }
 
       function scheduleAfterPaint(work) {
         requestAnimationFrame(function() {
           setTimeout(work, 0);
         });
+      }
+
+      function createEmptyEditsState(sourceName) {
+        return {
+          version: 1,
+          sourceExportName: sourceName || '',
+          conversations: {}
+        };
+      }
+
+      function getFileNameFromPath(filePath) {
+        if (!filePath || typeof filePath !== 'string') return '';
+        var normalized = filePath.replace(/\\/g, '/');
+        return normalized.split('/').pop() || '';
+      }
+
+      function getConversationEdit(conversationKey) {
+        if (!editsState || !editsState.conversations) {
+          editsState = createEmptyEditsState(sourceExportName);
+        }
+        if (!editsState.conversations[conversationKey]) {
+          editsState.conversations[conversationKey] = {
+            publish: false,
+            messages: {}
+          };
+        }
+        if (!editsState.conversations[conversationKey].messages) {
+          editsState.conversations[conversationKey].messages = {};
+        }
+        return editsState.conversations[conversationKey];
+      }
+
+      function getMessageEdit(conversationKey, messageKey) {
+        var conversationEdit = getConversationEdit(conversationKey);
+        if (!conversationEdit.messages[messageKey]) {
+          conversationEdit.messages[messageKey] = {
+            action: 'none',
+            note: '',
+            replacement: ''
+          };
+        }
+        return conversationEdit.messages[messageKey];
+      }
+
+      function setEditStatus(text) {
+        var status = dom.editsStatus || document.getElementById('editsStatus');
+        if (status) status.textContent = text || '';
+      }
+
+      function updateEditsControls() {
+        var controls = dom.editsControls || document.getElementById('editsControls');
+        if (controls) controls.style.display = jsonData.length > 0 ? 'flex' : 'none';
       }
 
       function getConversationMessages(conversation) {
@@ -561,7 +690,14 @@
                   ? new Date(timestampRaw * 1000).toLocaleString()
                   : null;
 
-                messages.push({ author: author, parts: parts, timestamp: timestamp, timestampRaw: timestampRaw, model: model });
+                messages.push({
+                  id: (node.message && node.message.id) || currentNode || String(messages.length),
+                  author: author,
+                  parts: parts,
+                  timestamp: timestamp,
+                  timestampRaw: timestampRaw,
+                  model: model
+                });
               }
             }
           }
@@ -701,6 +837,7 @@
           clearTimeout(searchDebounceTimer);
           searchDebounceTimer = null;
         }
+        updateEditsControls();
       }
 
       function updateConversationSearchControls() {
@@ -951,7 +1088,16 @@
         body.appendChild(filePart);
       }
 
-      function renderMessageElement(item) {
+      function getMessageActionClass(action) {
+        if (action === 'redact') return ' edit-redact';
+        if (action === 'softRedact') return ' edit-softRedact';
+        if (action === 'focus') return ' edit-focus';
+        return '';
+      }
+
+      function renderMessageElement(item, conversationKey, messageIndex) {
+        var messageKey = item.id || ('message-' + messageIndex);
+        var messageEdit = getMessageEdit(conversationKey, messageKey);
         var message = document.createElement('div');
         var roleClass = '';
         if (item.author === 'user') {
@@ -960,7 +1106,9 @@
           roleClass = ' AI';
         }
 
-        message.className = 'message' + roleClass;
+        message.className = 'message' + roleClass + getMessageActionClass(messageEdit.action);
+        message.setAttribute('data-conversation-key', conversationKey);
+        message.setAttribute('data-message-key', messageKey);
 
         var header = document.createElement('div');
         header.className = 'message-header';
@@ -980,6 +1128,24 @@
         model.textContent = item.model ? item.model : '';
         header.appendChild(model);
 
+        var actionWrap = document.createElement('label');
+        actionWrap.className = 'message-action';
+        actionWrap.textContent = 'Action';
+
+        var actionSelect = document.createElement('select');
+        actionSelect.setAttribute('data-edit-action', 'message-action');
+        actionSelect.setAttribute('aria-label', 'Message edit action');
+        var actions = ['none', 'redact', 'softRedact', 'focus'];
+        for (var a = 0; a < actions.length; a++) {
+          var option = document.createElement('option');
+          option.value = actions[a];
+          option.textContent = actions[a];
+          actionSelect.appendChild(option);
+        }
+        actionSelect.value = messageEdit.action || 'none';
+        actionWrap.appendChild(actionSelect);
+        header.appendChild(actionWrap);
+
         message.appendChild(header);
 
         var body = document.createElement('div');
@@ -997,13 +1163,28 @@
         var currentConversationDiv = document.createElement('div');
         currentConversationDiv.className = 'conversation';
         currentConversationDiv.id = conversationId;
+        currentConversationDiv.setAttribute('data-conversation-key', conversation.key);
 
         var heading = document.createElement('h4');
         heading.textContent = conversationNumber + '. ' + conversation.title;
         currentConversationDiv.appendChild(heading);
 
+        var conversationEdit = getConversationEdit(conversation.key);
+        var meta = document.createElement('div');
+        meta.className = 'conversation-meta';
+        var publishLabel = document.createElement('label');
+        publishLabel.className = 'publish-toggle';
+        var publishCheckbox = document.createElement('input');
+        publishCheckbox.type = 'checkbox';
+        publishCheckbox.setAttribute('data-edit-action', 'conversation-publish');
+        publishCheckbox.checked = !!conversationEdit.publish;
+        publishLabel.appendChild(publishCheckbox);
+        publishLabel.appendChild(document.createTextNode('Publish'));
+        meta.appendChild(publishLabel);
+        currentConversationDiv.appendChild(meta);
+
         for (var i = 0; i < conversation.messages.length; i++) {
-          currentConversationDiv.appendChild(renderMessageElement(conversation.messages[i]));
+          currentConversationDiv.appendChild(renderMessageElement(conversation.messages[i], conversation.key, i));
         }
 
         return currentConversationDiv;
@@ -1028,6 +1209,7 @@
             root.appendChild(emptyState);
           }
           updatePaginationControls();
+          updateEditsControls();
           updateConversationSearchControls();
           renderThreadList();
           setImportUiState(jsonData.length > 0);
@@ -1062,6 +1244,7 @@
         }
 
         updatePaginationControls();
+        updateEditsControls();
         updateSearchControls();
         renderThreadList();
         if (conversationSearchQuery.trim()) {
@@ -1071,9 +1254,12 @@
         }
       }
 
-      function renderData(dataArray, assets) {
+      function renderData(dataArray, assets, sourceName) {
         resetReaderState();
         assetsJson = assets || {};
+        sourceExportName = sourceName || sourceExportName || '';
+        editsState = createEmptyEditsState(sourceExportName);
+        setEditStatus(sourceExportName ? 'Edits for ' + sourceExportName : '');
 
         if (!Array.isArray(dataArray) || dataArray.length === 0) {
           renderCurrentPage();
@@ -1095,6 +1281,67 @@
         applyFilters();
         updateSearchControls();
         renderCurrentPage();
+      }
+
+      function normalizeLoadedEdits(loaded) {
+        var normalized = createEmptyEditsState((loaded && loaded.sourceExportName) || sourceExportName);
+        if (loaded && loaded.version) normalized.version = loaded.version;
+        var conversations = (loaded && loaded.conversations) || {};
+        for (var conversationKey in conversations) {
+          if (!Object.prototype.hasOwnProperty.call(conversations, conversationKey)) continue;
+          var loadedConversation = conversations[conversationKey] || {};
+          normalized.conversations[conversationKey] = {
+            publish: !!loadedConversation.publish,
+            messages: {}
+          };
+          var loadedMessages = loadedConversation.messages || {};
+          for (var messageKey in loadedMessages) {
+            if (!Object.prototype.hasOwnProperty.call(loadedMessages, messageKey)) continue;
+            var loadedMessage = loadedMessages[messageKey] || {};
+            var action = loadedMessage.action || 'none';
+            if (['none', 'redact', 'softRedact', 'focus'].indexOf(action) === -1) action = 'none';
+            normalized.conversations[conversationKey].messages[messageKey] = {
+              action: action,
+              note: loadedMessage.note || '',
+              replacement: loadedMessage.replacement || ''
+            };
+          }
+        }
+        return normalized;
+      }
+
+      async function saveEditsToFile() {
+        if (!window.api || !window.api.saveEdits) {
+          alert('Save edits API not available');
+          return;
+        }
+        editsState.sourceExportName = sourceExportName || editsState.sourceExportName || '';
+        var res = await window.api.saveEdits(editsState);
+        if (!res) return;
+        if (res.error) {
+          alert('Error saving edits: ' + res.error);
+          return;
+        }
+        setEditStatus('Saved ' + getFileNameFromPath(res.filePath));
+      }
+
+      async function loadEditsFromFile() {
+        if (!window.api || !window.api.loadEdits) {
+          alert('Load edits API not available');
+          return;
+        }
+        var res = await window.api.loadEdits();
+        if (!res) return;
+        if (res.error) {
+          alert('Error loading edits: ' + res.error);
+          return;
+        }
+        editsState = normalizeLoadedEdits(res.data);
+        if (!sourceExportName && editsState.sourceExportName) {
+          sourceExportName = editsState.sourceExportName;
+        }
+        setEditStatus('Loaded ' + getFileNameFromPath(res.filePath));
+        renderCurrentPageAfterPaint();
       }
 
       window.addEventListener('DOMContentLoaded', function() {
@@ -1152,6 +1399,31 @@
             var conversation = event.target.closest ? event.target.closest('.conversation') : null;
             if (conversation && conversation.id) {
               setActiveConversation(conversation.id);
+            }
+          });
+
+          root.addEventListener('change', function(event) {
+            var target = event.target;
+            if (!target || !target.getAttribute) return;
+            var editAction = target.getAttribute('data-edit-action');
+            if (editAction === 'conversation-publish') {
+              var conversationEl = target.closest ? target.closest('.conversation') : null;
+              var conversationKey = conversationEl ? conversationEl.getAttribute('data-conversation-key') : '';
+              if (!conversationKey) return;
+              getConversationEdit(conversationKey).publish = !!target.checked;
+              setEditStatus('Unsaved edit changes');
+            } else if (editAction === 'message-action') {
+              var messageEl = target.closest ? target.closest('.message') : null;
+              if (!messageEl) return;
+              var messageConversationKey = messageEl.getAttribute('data-conversation-key');
+              var messageKey = messageEl.getAttribute('data-message-key');
+              if (!messageConversationKey || !messageKey) return;
+              var messageEdit = getMessageEdit(messageConversationKey, messageKey);
+              messageEdit.action = target.value || 'none';
+              messageEl.className = messageEl.className
+                .replace(/\sedit-redact|\sedit-softRedact|\sedit-focus/g, '') +
+                getMessageActionClass(messageEdit.action);
+              setEditStatus('Unsaved edit changes');
             }
           });
         }
@@ -1234,6 +1506,23 @@
           });
         }
 
+        if (dom.saveEditsBtn) {
+          dom.saveEditsBtn.addEventListener('click', function() {
+            saveEditsToFile().catch(function(e) {
+              console.error(e);
+              alert('Error saving edits');
+            });
+          });
+        }
+        if (dom.loadEditsBtn) {
+          dom.loadEditsBtn.addEventListener('click', function() {
+            loadEditsFromFile().catch(function(e) {
+              console.error(e);
+              alert('Error loading edits');
+            });
+          });
+        }
+
         async function importAndRender() {
           if (!window.api || !window.api.openFile) {
             alert('File open API not available');
@@ -1258,7 +1547,7 @@
             } else if (parsed) {
               toRender = [parsed];
             }
-            renderData(toRender, assets);
+            renderData(toRender, assets, getFileNameFromPath(res.filePath));
           } catch (e) {
             console.error(e);
             alert('Error loading file');
@@ -1293,7 +1582,7 @@
             } else if (parsed) {
               toRender = [parsed];
             }
-            renderData(toRender, assets);
+            renderData(toRender, assets, getFileNameFromPath(res.filePath));
           }).catch(function() {}).finally(function() {
             hideLoading();
           });
@@ -1350,6 +1639,11 @@
             <span id="pageLoadingIndicator" aria-live="polite">Loading page...</span>
             <button id="nextPageBtn" type="button">Next</button>
             <button id="lastPageBtn" type="button">Last</button>
+          </div>
+          <div id="editsControls" aria-label="Edit metadata">
+            <button id="saveEditsBtn" type="button">Save Edits</button>
+            <button id="loadEditsBtn" type="button">Load Edits</button>
+            <span id="editsStatus" aria-live="polite"></span>
           </div>
           <div id="conversationSearchControls" aria-label="Search selected conversation">
             <input id="conversationSearchInput" type="search" placeholder="Search selected conversation" autocomplete="off" disabled>

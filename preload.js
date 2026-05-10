@@ -12,6 +12,12 @@ contextBridge.exposeInMainWorld('api', {
   },
   setImportMenuVisible: (isVisible) => {
     ipcRenderer.send('menu:setImportVisible', !!isVisible);
+  },
+  saveEdits: async (edits) => {
+    return await ipcRenderer.invoke('dialog:saveEdits', edits);
+  },
+  loadEdits: async () => {
+    return await ipcRenderer.invoke('dialog:loadEdits');
   }
 });
 
