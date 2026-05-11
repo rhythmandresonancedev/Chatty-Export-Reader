@@ -57,13 +57,17 @@ function buildLocalAssetMap(baseDir) {
       if (!assetExts.has(ext)) continue;
 
       const fileUrl = pathToFileURL(fullPath).href;
+      const assetInfo = {
+        url: fileUrl,
+        relativePath: path.relative(baseDir, fullPath).replace(/\\/g, '/')
+      };
       const stem = path.basename(entry.name, ext);
       const unsanitizedStem = stem.replace(/-sanitized$/, '');
 
-      assetMap[entry.name] = fileUrl;
-      assetMap[stem] = fileUrl;
-      assetMap[unsanitizedStem] = fileUrl;
-      assetMap['sediment://' + unsanitizedStem] = fileUrl;
+      assetMap[entry.name] = assetInfo;
+      assetMap[stem] = assetInfo;
+      assetMap[unsanitizedStem] = assetInfo;
+      assetMap['sediment://' + unsanitizedStem] = assetInfo;
     }
   }
 
@@ -162,6 +166,22 @@ ipcMain.handle('dialog:saveEdits', async (event, edits) => {
     });
     if (canceled || !filePath) return null;
     await fs.promises.writeFile(filePath, JSON.stringify(edits || {}, null, 2), 'utf8');
+    return { filePath };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('dialog:saveMarkdown', async (event, markdown) => {
+  try {
+    const defaultPath = path.join(__dirname, 'published-threads.md');
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export published threads to Markdown',
+      defaultPath,
+      filters: [{ name: 'Markdown', extensions: ['md'] }]
+    });
+    if (canceled || !filePath) return null;
+    await fs.promises.writeFile(filePath, markdown || '', 'utf8');
     return { filePath };
   } catch (err) {
     return { error: err.message };

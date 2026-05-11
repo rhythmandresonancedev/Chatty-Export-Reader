@@ -712,6 +712,7 @@
         dom.editsControls = document.getElementById('editsControls');
         dom.saveEditsBtn = document.getElementById('saveEditsBtn');
         dom.loadEditsBtn = document.getElementById('loadEditsBtn');
+        dom.exportMarkdownBtn = document.getElementById('exportMarkdownBtn');
         dom.editsStatus = document.getElementById('editsStatus');
       }
 
@@ -909,6 +910,19 @@
       }
 
       function resolveAssetUrl(asset) {
+        var info = resolveAssetInfo(asset);
+        if (!info) return '';
+        return typeof info === 'string' ? info : (info.url || '');
+      }
+
+      function resolveAssetMarkdownTarget(asset) {
+        var info = resolveAssetInfo(asset);
+        if (!info) return '';
+        if (typeof info === 'string') return markdownLinkTarget(info);
+        return info.relativePath || markdownLinkTarget(info.url || '');
+      }
+
+      function resolveAssetInfo(asset) {
         if (!asset) return '';
         var pointer = asset.asset_pointer || asset.id || asset.file_id || asset.name || '';
         var assetId = getAssetId(asset);
@@ -1629,6 +1643,139 @@
         renderCurrentPageAfterPaint();
       }
 
+      function escapeMarkdownText(text) {
+        if (typeof text !== 'string') return '';
+        return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+      }
+
+      function markdownLinkTarget(url) {
+        if (!url || typeof url !== 'string') return '';
+        if (url.indexOf('file://') === 0) {
+          try {
+            var parsed = new URL(url);
+            var pathParts = parsed.pathname.split('/').filter(Boolean);
+            var last = pathParts.length ? pathParts[pathParts.length - 1] : '';
+            return decodeURIComponent(last || parsed.pathname);
+          } catch (e) {
+            return url;
+          }
+        }
+        return url;
+      }
+
+      function appendMarkdownNote(lines, note) {
+        if (!note) return;
+        lines.push('');
+        lines.push('> Note: ' + escapeMarkdownText(note));
+      }
+
+      function renderMessagePartsToMarkdown(parts) {
+        var lines = [];
+        for (var i = 0; i < parts.length; i++) {
+          var part = parts[i];
+          if (part.text) {
+            var text = escapeMarkdownText(part.text);
+            if (text) lines.push(text);
+          } else if (part.transcript) {
+            lines.push('[Transcript]: ' + escapeMarkdownText(part.transcript));
+          } else if (part.asset) {
+            var link = resolveAssetUrl(part.asset);
+            if (isImageAsset(part.asset, link)) {
+              if (link) {
+                lines.push('![Image attachment](<' + resolveAssetMarkdownTarget(part.asset) + '>)');
+              } else {
+                lines.push('[Image unavailable]');
+              }
+            } else if (link) {
+              lines.push('[File attachment](<' + resolveAssetMarkdownTarget(part.asset) + '>)');
+            } else {
+              lines.push('[File unavailable]');
+            }
+          }
+        }
+        return lines.join('\n\n');
+      }
+
+      function buildPublishedMarkdown() {
+        var lines = [];
+        lines.push('# Published Threads');
+        if (sourceExportName) {
+          lines.push('');
+          lines.push('_Source: ' + escapeMarkdownText(sourceExportName) + '_');
+        }
+
+        var publishedCount = 0;
+        for (var i = 0; i < allConversationsForDisplay.length; i++) {
+          var conversation = allConversationsForDisplay[i];
+          var conversationEdit = getConversationEdit(conversation.key);
+          if (!conversationEdit.publish) continue;
+          publishedCount++;
+
+          lines.push('');
+          lines.push('---');
+          lines.push('');
+          lines.push('## ' + escapeMarkdownText(conversation.title || 'Untitled'));
+          lines.push('');
+          lines.push('_Date: ' + formatTimestamp(conversation.sortTimestampRaw) + '_');
+
+          for (var m = 0; m < conversation.messages.length; m++) {
+            var message = conversation.messages[m];
+            var messageKey = message.id || ('message-' + m);
+            var messageEdit = getMessageEdit(conversation.key, messageKey);
+            var action = messageEdit.action || 'none';
+            var author = message.author || 'message';
+            var messageDate = message.timestamp ? ' - ' + message.timestamp : '';
+
+            lines.push('');
+            lines.push('### ' + author + messageDate);
+            lines.push('');
+
+            if (action === 'redact') {
+              lines.push('[REDACTED]');
+              appendMarkdownNote(lines, messageEdit.note);
+              continue;
+            }
+
+            if (action === 'softRedact') {
+              lines.push('[SOFT REDACTED]');
+              appendMarkdownNote(lines, messageEdit.note);
+              continue;
+            }
+
+            if (action === 'focus') {
+              lines.push('> **FOCUS**');
+              lines.push('');
+            }
+
+            var body = renderMessagePartsToMarkdown(message.parts || []);
+            lines.push(body || '[No renderable content]');
+            appendMarkdownNote(lines, messageEdit.note);
+          }
+        }
+
+        if (publishedCount === 0) return '';
+        return lines.join('\n') + '\n';
+      }
+
+      async function exportPublishedMarkdown() {
+        if (!window.api || !window.api.saveMarkdown) {
+          alert('Markdown save API not available');
+          return;
+        }
+        var markdown = buildPublishedMarkdown();
+        if (!markdown) {
+          alert('No published threads to export.');
+          return;
+        }
+        var res = await window.api.saveMarkdown(markdown);
+        if (!res) return;
+        if (res.error) {
+          alert('Error exporting Markdown: ' + res.error);
+          return;
+        }
+        setEditStatus('Exported ' + getFileNameFromPath(res.filePath));
+      }
+
       window.addEventListener('DOMContentLoaded', function() {
         cacheDom();
         var threadToggleBtn = document.getElementById('threadsToggleBtn');
@@ -1854,6 +2001,14 @@
             });
           });
         }
+        if (dom.exportMarkdownBtn) {
+          dom.exportMarkdownBtn.addEventListener('click', function() {
+            exportPublishedMarkdown().catch(function(e) {
+              console.error(e);
+              alert('Error exporting Markdown');
+            });
+          });
+        }
 
         async function importAndRender() {
           if (!window.api || !window.api.openFile) {
@@ -1977,6 +2132,7 @@
           <div id="editsControls" aria-label="Edit metadata">
             <button id="saveEditsBtn" type="button">Save Edits</button>
             <button id="loadEditsBtn" type="button">Load Edits</button>
+            <button id="exportMarkdownBtn" type="button">Export Published Markdown</button>
             <span id="editsStatus" aria-live="polite"></span>
           </div>
           <div id="conversationSearchControls" aria-label="Search selected conversation">

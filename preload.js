@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld('api', {
   },
   loadEdits: async () => {
     return await ipcRenderer.invoke('dialog:loadEdits');
+  },
+  saveMarkdown: async (markdown) => {
+    return await ipcRenderer.invoke('dialog:saveMarkdown', markdown);
   }
 });
 
