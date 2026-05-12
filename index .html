@@ -5,6 +5,12 @@
       :root {
         --rail-width: 64px;
         --sidebar-width: 320px;
+        --reader-bg: #222222;
+        --reader-panel: rgba(34, 34, 34, 0.96);
+        --reader-text: #dddddd;
+        --reader-muted: rgba(221, 221, 221, 0.56);
+        --reader-soft: rgba(221, 221, 221, 0.74);
+        --reader-border: rgba(255, 255, 255, 0.11);
       }
 
       * {
@@ -14,12 +20,13 @@
       body {
         font-family: 'SF Pro Display', -apple-system-headline, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         background: url('./images/background.png') center / cover no-repeat fixed;
-        color: #DDD;
+        color: var(--reader-text);
         margin: 0;
         text-align: left;
         height: 100vh;
         overflow: hidden;
-        
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
       }
 
       #appLayout {
@@ -145,25 +152,29 @@
       .thread-item {
         width: 100%;
         background: transparent;
-        border: none;
-        color: #DDD;
+        border: 1px solid transparent;
+        color: var(--reader-text);
         text-align: left;
-        padding: 10px 12px;
+        padding: 10px 12px 11px;
         border-radius: 8px;
         cursor: pointer;
+        transition: background-color 0.12s ease, border-color 0.12s ease;
       }
 
       .thread-item:hover {
-        background: rgba(255, 255, 255, 0.09);
+        background: rgba(255, 255, 255, 0.075);
+        border-color: rgba(255, 255, 255, 0.06);
       }
 
       .thread-item.active {
-        background: rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.14);
+        border-color: rgba(255, 255, 255, 0.09);
       }
 
       .thread-item .title {
-        font-size: 0.9rem;
-        line-height: 1.25rem;
+        font-size: 0.92rem;
+        font-weight: 600;
+        line-height: 1.32;
       }
 
       .thread-title-row {
@@ -178,9 +189,10 @@
       }
 
       .thread-item .meta {
-        opacity: 0.6;
+        color: var(--reader-muted);
         font-size: 0.75rem;
-        margin-top: 4px;
+        line-height: 1.3;
+        margin-top: 5px;
       }
 
       #mainArea {
@@ -191,6 +203,7 @@
         overflow-x: hidden;
         transition: margin-left 0.2s ease, width 0.2s ease;
         padding: 20px 20px 96px;
+        scrollbar-color: rgba(221, 221, 221, 0.34) rgba(18, 18, 18, 0.2);
       }
 
       #mainArea.sidebar-open {
@@ -204,6 +217,28 @@
         min-height: 100%;
         margin: 0 auto;
         overflow-x: hidden;
+      }
+
+      #mainArea::-webkit-scrollbar,
+      #threadList::-webkit-scrollbar {
+        width: 10px;
+      }
+
+      #mainArea::-webkit-scrollbar-track,
+      #threadList::-webkit-scrollbar-track {
+        background: rgba(18, 18, 18, 0.18);
+      }
+
+      #mainArea::-webkit-scrollbar-thumb,
+      #threadList::-webkit-scrollbar-thumb {
+        background: rgba(221, 221, 221, 0.28);
+        border: 3px solid rgba(18, 18, 18, 0.18);
+        border-radius: 999px;
+      }
+
+      #mainArea::-webkit-scrollbar-thumb:hover,
+      #threadList::-webkit-scrollbar-thumb:hover {
+        background: rgba(221, 221, 221, 0.42);
       }
 
       #controls {
@@ -221,14 +256,14 @@
         justify-content: center;
         flex-wrap: wrap;
         gap: 8px;
-        min-height: 64px;
-        padding: 10px 18px;
+        min-height: 60px;
+        padding: 10px 18px 11px;
         margin-bottom: 0;
-        background: rgba(18, 18, 18, 0.9);
-        border-top: 1px solid rgba(255, 255, 255, 0.12);
-        box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.22);
-        backdrop-filter: blur(8px);
-        color: #DDD;
+        background: rgba(20, 20, 20, 0.88);
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 -10px 26px rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(10px);
+        color: var(--reader-text);
         transition: left 0.2s ease;
       }
 
@@ -240,24 +275,31 @@
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        font-size: 0.9rem;
-        opacity: 0.85;
+        font-size: 0.84rem;
+        color: var(--reader-soft);
       }
 
       #pageSizeSelect {
-        background: #222222;
-        color: #DDD;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 5px;
+        background: rgba(34, 34, 34, 0.92);
+        color: var(--reader-text);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
         padding: 7px 8px;
       }
 
       #paginationControls button {
-        background: #222222;
-        color: #DDD;
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 5px;
+        background: rgba(34, 34, 34, 0.9);
+        color: var(--reader-text);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 6px;
         cursor: pointer;
+      }
+
+      #paginationControls button:not(:disabled):hover,
+      #conversationSearchControls button:not(:disabled):hover,
+      #editsControls button:not(:disabled):hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.24);
       }
 
       #paginationControls button:disabled {
@@ -268,15 +310,15 @@
       #pageIndicator {
         min-width: 140px;
         text-align: center;
-        font-size: 0.9rem;
-        opacity: 0.85;
+        font-size: 0.86rem;
+        color: var(--reader-soft);
       }
 
       #pageLoadingIndicator {
         display: none;
         min-width: 92px;
-        font-size: 0.9rem;
-        opacity: 0.75;
+        font-size: 0.84rem;
+        color: var(--reader-muted);
       }
 
       #conversationSearchControls {
@@ -291,10 +333,10 @@
       #conversationSearchInput {
         min-width: 240px;
         flex: 1;
-        background: #222222;
-        color: #DDD;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 5px;
+        background: rgba(34, 34, 34, 0.92);
+        color: var(--reader-text);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
         padding: 8px 10px;
         font-size: 0.9rem;
         outline: none;
@@ -309,10 +351,10 @@
       }
 
       #conversationSearchControls button {
-        background: #222222;
-        color: #DDD;
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 5px;
+        background: rgba(34, 34, 34, 0.9);
+        color: var(--reader-text);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 6px;
         cursor: pointer;
       }
 
@@ -340,10 +382,10 @@
 
       #editsControls button {
         display: none;
-        background: #222222;
-        color: #DDD;
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 5px;
+        background: rgba(34, 34, 34, 0.9);
+        color: var(--reader-text);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 6px;
         cursor: pointer;
       }
 
@@ -365,10 +407,14 @@
       }
 
       .empty-state {
-        color: #DDD;
-        opacity: 0.75;
-        padding: 24px 0;
+        color: var(--reader-muted);
+        padding: 34px 18px;
         text-align: center;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        background: rgba(34, 34, 34, 0.58);
       }
 
       button {
@@ -378,11 +424,13 @@
 
       h4 {
         margin: 0;
-        font-size: 1.5rem;
-        letter-spacing: 0.02em;
-        color: #EEE;
+        font-size: clamp(1.28rem, 1rem + 0.7vw, 1.58rem);
+        line-height: 1.28;
+        letter-spacing: 0;
+        color: #eeeeee;
         text-align: center;
-        margin-bottom: 40px;
+        margin-bottom: 38px;
+        font-weight: 650;
       }
 
       h4::after {
@@ -437,25 +485,28 @@
       }
 
       .conversation {
-        padding: 20px;
+        padding: 22px 24px 26px;
         display: flex;
         flex-direction: column;
         width: 100%;
         min-width: 0;
-        background: #222222;
-        border-radius: 5px;
-        margin-bottom: 20px;
+        background: var(--reader-panel);
+        border: 1px solid rgba(255, 255, 255, 0.055);
+        border-radius: 6px;
+        margin-bottom: 22px;
+        box-shadow: 0 1px 10px rgba(0, 0, 0, 0.08);
       }
 
       .message-header {
-        font-size: .8rem;
         display: flex;
         justify-content: left;
-        align-items: center;
+        align-items: baseline;
         flex-wrap: wrap;
-        opacity: 45%;
-        margin-bottom: 6px;
-        column-gap: 10px;
+        margin-bottom: 8px;
+        column-gap: 9px;
+        row-gap: 3px;
+        font-family: 'SF Pro Display', -apple-system-headline, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        line-height: 1.2;
       }
 
       .message-edit-controls {
@@ -483,7 +534,7 @@
 
       .message-note {
         width: 100%;
-        margin: 4px 0 10px;
+        margin: 4px 0 12px;
       }
 
       body.edit-mode .message-note {
@@ -554,13 +605,13 @@
 
       .message-preview-note {
         display: none;
-        margin-top: 10px;
+        margin-top: 12px;
         padding-top: 8px;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
-        color: rgba(221, 221, 221, 0.58);
+        color: var(--reader-muted);
         font-family: system-ui, 'Segoe UI', sans-serif;
         font-size: 0.82rem;
-        line-height: 1.35;
+        line-height: 1.45;
         letter-spacing: 0;
         white-space: normal;
       }
@@ -572,28 +623,52 @@
       }
 
       .message {
-        padding: 8px;
-        border-radius: 2.5px;
-        letter-spacing: 0.02em;
+        padding: 10px 8px 11px;
+        border-radius: 4px;
+        letter-spacing: 0;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         word-break: break-word;
-        margin: 20px 0;
-        font-size: 1.1rem;
-        opacity: 90%;
+        margin: 24px 0;
+        font-size: 1.08rem;
+        opacity: 0.94;
+        transition: background-color 0.12s ease, border-color 0.12s ease;
+      }
+
+      .message:hover {
+        background: rgba(255, 255, 255, 0.018);
+      }
+
+      .message:first-of-type {
+        margin-top: 0;
+      }
+
+      .message:last-of-type {
+        margin-bottom: 0;
+      }
+
+      .message-body {
+        line-height: 1.58;
+      }
+
+      .message-body .text-part + .text-part,
+      .message-body .text-part + .message-image-wrap,
+      .message-body .message-image-wrap + .text-part,
+      .message-body .asset-placeholder + .text-part {
+        margin-top: 0.95em;
       }
 
       .message.user .message-body {
         color: #abd4ee;
         font-family: "Playpen Sans", cursive;
-        font-weight: 300;
+        font-weight: 340;
         font-style: normal;
       }
 
       .message.AI .message-body {
         color: #cccc9b;
         font-family: "Play", sans-serif;
-        font-weight: 300;
+        font-weight: 400;
         font-style: normal;
       }
 
@@ -622,12 +697,25 @@
       }
 
       .author {
-        font-weight: bold;
-        margin-bottom: 4px;
+        color: rgba(238, 238, 238, 0.72);
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
       }
 
       .author::first-letter {
         text-transform: uppercase;
+      }
+
+      .timestamp,
+      .model {
+        color: var(--reader-muted);
+        font-size: 0.78rem;
+        font-weight: 500;
+      }
+
+      .model {
+        color: rgba(221, 221, 221, 0.43);
       }
 
       #openFileBtn {
@@ -1836,16 +1924,16 @@
         html.push('<meta name="viewport" content="width=device-width, initial-scale=1">');
         html.push('<title>' + escapeHtml(title) + '</title>');
         html.push('<style>');
-        html.push('body{margin:0;background:#f6f4ef;color:#1f2933;font-family:Georgia,"Times New Roman",serif;line-height:1.55;}');
-        html.push('main{max-width:980px;margin:0 auto;padding:32px 18px 64px;}');
-        html.push('h1{font-size:32px;margin:0 0 8px;}h2{font-size:24px;margin:0 0 6px;}');
-        html.push('.source,.conversation-date,.message-meta{color:#65707d;font-size:13px;}');
-        html.push('.conversation{border-top:1px solid #d8d1c4;padding-top:28px;margin-top:32px;}');
-        html.push('.message{background:#fff;border:1px solid #ded8ce;border-radius:8px;margin:18px 0;padding:14px 16px;box-shadow:0 1px 2px rgba(31,41,51,.04);}');
+        html.push('body{margin:0;background:#f6f4ef;color:#1f2933;font-family:Georgia,"Times New Roman",serif;line-height:1.62;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}');
+        html.push('main{max-width:900px;margin:0 auto;padding:36px 20px 72px;}');
+        html.push('h1{font-size:34px;line-height:1.15;margin:0 0 8px;}h2{font-size:25px;line-height:1.22;margin:0 0 8px;}');
+        html.push('.source,.conversation-date,.message-meta{color:#65707d;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;line-height:1.35;}');
+        html.push('.conversation{border-top:1px solid #d8d1c4;padding-top:30px;margin-top:36px;}');
+        html.push('.message{background:#fff;border:1px solid #ded8ce;border-radius:8px;margin:20px 0;padding:15px 17px 16px;box-shadow:0 1px 2px rgba(31,41,51,.035);}');
         html.push('.message.user{border-left:4px solid #7aa7c7;}.message.chatgpt{border-left:4px solid #8d7db8;}.message.tool,.message.custom-user-info{border-left:4px solid #9099a2;}');
-        html.push('.message-header{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;}');
-        html.push('.role{font-weight:700;text-transform:capitalize;}.message-body{white-space:pre-wrap;overflow-wrap:anywhere;}');
-        html.push('.text-part+.text-part,.text-part+.image-part,.image-part+.text-part,.file-part+.text-part{margin-top:12px;}');
+        html.push('.message-header{display:flex;column-gap:10px;row-gap:3px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;}');
+        html.push('.role{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;font-weight:700;text-transform:capitalize;}.message-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.62;}');
+        html.push('.text-part+.text-part,.text-part+.image-part,.image-part+.text-part,.file-part+.text-part{margin-top:14px;}');
         html.push('.image-part{margin:12px 0 0;}.image-part img{display:block;max-width:100%;height:auto;border-radius:6px;border:1px solid #d8d1c4;}.image-part figcaption{font-size:12px;color:#65707d;margin-top:4px;}');
         html.push('.file-part,.asset-placeholder,.transcript{margin-top:10px;color:#3f4a56;}.file-part a{color:#245f9e;}');
         html.push('.redacted .message-body{background:#050505;color:#fff;border-radius:4px;padding:18px;font-weight:700;letter-spacing:.08em;text-align:center;}');
