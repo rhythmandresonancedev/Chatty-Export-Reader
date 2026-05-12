@@ -14,7 +14,6 @@ function buildAppMenu() {
         {
           id: 'importConversation',
           label: 'Import Conversation',
-          visible: false,
           click: () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('menu:importFile');
@@ -22,14 +21,90 @@ function buildAppMenu() {
           }
         },
         { type: 'separator' },
+        {
+          label: 'Save Edits',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('menu:saveEdits');
+            }
+          }
+        },
+        {
+          label: 'Load Edits',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('menu:loadEdits');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Export Published Markdown',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('menu:exportMarkdown');
+            }
+          }
+        },
+        {
+          label: 'Export Published HTML',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('menu:exportHtml');
+            }
+          }
+        },
+        { type: 'separator' },
         { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'close' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About',
+          enabled: false
+        }
       ]
     }
   ];
 
-  //const menu = Menu.buildFromTemplate(template);
-  //Menu.setApplicationMenu(menu);
-  //importMenuItem = menu.getMenuItemById('importConversation');
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+  importMenuItem = menu.getMenuItemById('importConversation');
 }
 
 function buildLocalAssetMap(baseDir) {

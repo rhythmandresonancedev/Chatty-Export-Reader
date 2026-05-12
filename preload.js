@@ -10,6 +10,18 @@ contextBridge.exposeInMainWorld('api', {
   onImportFromMenu: (callback) => {
     ipcRenderer.on('menu:importFile', callback);
   },
+  onSaveEditsFromMenu: (callback) => {
+    ipcRenderer.on('menu:saveEdits', callback);
+  },
+  onLoadEditsFromMenu: (callback) => {
+    ipcRenderer.on('menu:loadEdits', callback);
+  },
+  onExportMarkdownFromMenu: (callback) => {
+    ipcRenderer.on('menu:exportMarkdown', callback);
+  },
+  onExportHtmlFromMenu: (callback) => {
+    ipcRenderer.on('menu:exportHtml', callback);
+  },
   setImportMenuVisible: (isVisible) => {
     ipcRenderer.send('menu:setImportVisible', !!isVisible);
   },
