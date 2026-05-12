@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('api', {
   },
   saveMarkdown: async (markdown) => {
     return await ipcRenderer.invoke('dialog:saveMarkdown', markdown);
+  },
+  saveHtml: async (html) => {
+    return await ipcRenderer.invoke('dialog:saveHtml', html);
   }
 });
 

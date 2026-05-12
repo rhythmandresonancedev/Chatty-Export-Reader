@@ -713,6 +713,7 @@
         dom.saveEditsBtn = document.getElementById('saveEditsBtn');
         dom.loadEditsBtn = document.getElementById('loadEditsBtn');
         dom.exportMarkdownBtn = document.getElementById('exportMarkdownBtn');
+        dom.exportHtmlBtn = document.getElementById('exportHtmlBtn');
         dom.editsStatus = document.getElementById('editsStatus');
       }
 
@@ -961,6 +962,10 @@
           .replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&#039;');
+      }
+
+      function escapeHtmlAttribute(text) {
+        return escapeHtml(text).replace(/`/g, '&#096;');
       }
 
       function renderThreadList() {
@@ -1757,6 +1762,150 @@
         return lines.join('\n') + '\n';
       }
 
+      function renderPlainTextToHtml(text) {
+        var normalized = typeof text === 'string'
+          ? text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+          : '';
+        return '<div class="text-part">' + escapeHtml(normalized) + '</div>';
+      }
+
+      function renderMessagePartsToHtml(parts) {
+        var html = [];
+        for (var i = 0; i < parts.length; i++) {
+          var part = parts[i];
+          if (part.text) {
+            html.push(renderPlainTextToHtml(part.text));
+          } else if (part.transcript) {
+            html.push('<div class="transcript"><span>[Transcript]</span> ' + escapeHtml(part.transcript) + '</div>');
+          } else if (part.asset) {
+            var link = resolveAssetUrl(part.asset);
+            var target = resolveAssetMarkdownTarget(part.asset);
+            var safeTarget = target || link;
+            if (isImageAsset(part.asset, link)) {
+              if (safeTarget) {
+                html.push(
+                  '<figure class="image-part">' +
+                    '<img src="' + escapeHtmlAttribute(safeTarget) + '" alt="Image attachment" loading="lazy">' +
+                    '<figcaption>Image attachment</figcaption>' +
+                  '</figure>'
+                );
+              } else {
+                html.push('<div class="asset-placeholder">[Image unavailable]</div>');
+              }
+            } else if (safeTarget) {
+              html.push(
+                '<div class="file-part">[File]: <a href="' + escapeHtmlAttribute(safeTarget) + '">' +
+                  escapeHtml(safeTarget) +
+                '</a></div>'
+              );
+            } else {
+              html.push('<div class="asset-placeholder">[File unavailable]</div>');
+            }
+          }
+        }
+        return html.join('\n') || '<div class="asset-placeholder">[No renderable content]</div>';
+      }
+
+      function renderHtmlNote(note) {
+        if (!note) return '';
+        return '<aside class="edit-note"><strong>Note:</strong> ' + escapeHtml(note) + '</aside>';
+      }
+
+      function buildPublishedHtml() {
+        var html = [];
+        var title = 'Published Threads';
+        html.push('<!doctype html>');
+        html.push('<html lang="en">');
+        html.push('<head>');
+        html.push('<meta charset="utf-8">');
+        html.push('<meta name="viewport" content="width=device-width, initial-scale=1">');
+        html.push('<title>' + escapeHtml(title) + '</title>');
+        html.push('<style>');
+        html.push('body{margin:0;background:#f6f4ef;color:#1f2933;font-family:Georgia,"Times New Roman",serif;line-height:1.55;}');
+        html.push('main{max-width:980px;margin:0 auto;padding:32px 18px 64px;}');
+        html.push('h1{font-size:32px;margin:0 0 8px;}h2{font-size:24px;margin:0 0 6px;}');
+        html.push('.source,.conversation-date,.message-meta{color:#65707d;font-size:13px;}');
+        html.push('.conversation{border-top:1px solid #d8d1c4;padding-top:28px;margin-top:32px;}');
+        html.push('.message{background:#fff;border:1px solid #ded8ce;border-radius:8px;margin:18px 0;padding:14px 16px;box-shadow:0 1px 2px rgba(31,41,51,.04);}');
+        html.push('.message.user{border-left:4px solid #7aa7c7;}.message.chatgpt{border-left:4px solid #8d7db8;}.message.tool,.message.custom-user-info{border-left:4px solid #9099a2;}');
+        html.push('.message-header{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;}');
+        html.push('.role{font-weight:700;text-transform:capitalize;}.message-body{white-space:pre-wrap;overflow-wrap:anywhere;}');
+        html.push('.text-part+.text-part,.text-part+.image-part,.image-part+.text-part,.file-part+.text-part{margin-top:12px;}');
+        html.push('.image-part{margin:12px 0 0;}.image-part img{display:block;max-width:100%;height:auto;border-radius:6px;border:1px solid #d8d1c4;}.image-part figcaption{font-size:12px;color:#65707d;margin-top:4px;}');
+        html.push('.file-part,.asset-placeholder,.transcript{margin-top:10px;color:#3f4a56;}.file-part a{color:#245f9e;}');
+        html.push('.redacted .message-body{background:#050505;color:#fff;border-radius:4px;padding:18px;font-weight:700;letter-spacing:.08em;text-align:center;}');
+        html.push('.soft-redacted .message-body{filter:blur(7px);user-select:none;transition:filter .15s ease;}.soft-redacted.revealed .message-body{filter:none;user-select:auto;}');
+        html.push('.soft-redacted{cursor:pointer;}.soft-redacted .reveal-hint{display:block;color:#65707d;font-size:12px;margin-top:8px;}.soft-redacted.revealed .reveal-hint{display:none;}');
+        html.push('.focus{border-color:#c6a642;background:#fffdf2;box-shadow:0 0 0 2px rgba(198,166,66,.16);}');
+        html.push('.edit-note{margin-top:12px;padding:10px 12px;background:#f3f0e8;border-left:3px solid #8d7db8;color:#303943;font-size:14px;}');
+        html.push('@media print{body{background:#fff;}main{max-width:none;padding:0;}.message{box-shadow:none;break-inside:avoid;}.soft-redacted .message-body{filter:none;}}');
+        html.push('</style>');
+        html.push('</head>');
+        html.push('<body>');
+        html.push('<main>');
+        html.push('<h1>' + escapeHtml(title) + '</h1>');
+        if (sourceExportName) {
+          html.push('<div class="source">Source: ' + escapeHtml(sourceExportName) + '</div>');
+        }
+
+        var publishedCount = 0;
+        for (var i = 0; i < allConversationsForDisplay.length; i++) {
+          var conversation = allConversationsForDisplay[i];
+          var conversationEdit = getConversationEdit(conversation.key);
+          if (!conversationEdit.publish) continue;
+          publishedCount++;
+
+          html.push('<section class="conversation">');
+          html.push('<h2>' + escapeHtml(conversation.title || 'Untitled') + '</h2>');
+          html.push('<div class="conversation-date">Date: ' + escapeHtml(formatTimestamp(conversation.sortTimestampRaw)) + '</div>');
+
+          for (var m = 0; m < conversation.messages.length; m++) {
+            var message = conversation.messages[m];
+            var messageKey = message.id || ('message-' + m);
+            var messageEdit = getMessageEdit(conversation.key, messageKey);
+            var action = messageEdit.action || 'none';
+            var role = message.author || 'message';
+            var roleClass = role.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'message';
+            var className = 'message ' + roleClass;
+            if (action === 'redact') className += ' redacted';
+            if (action === 'softRedact') className += ' soft-redacted';
+            if (action === 'focus') className += ' focus';
+
+            html.push('<article class="' + escapeHtmlAttribute(className) + '"' + (action === 'softRedact' ? ' onclick="this.classList.toggle(&quot;revealed&quot;)"' : '') + '>');
+            html.push('<header class="message-header">');
+            html.push('<span class="role">' + escapeHtml(role) + '</span>');
+            if (message.timestamp) html.push('<span class="message-meta">' + escapeHtml(message.timestamp) + '</span>');
+            if (message.model) html.push('<span class="message-meta">' + escapeHtml(message.model) + '</span>');
+            html.push('</header>');
+
+            if (action === 'redact') {
+              html.push('<div class="message-body">[REDACTED]</div>');
+              html.push(renderHtmlNote(messageEdit.note));
+              html.push('</article>');
+              continue;
+            }
+
+            html.push('<div class="message-body">');
+            html.push(renderMessagePartsToHtml(message.parts || []));
+            html.push('</div>');
+            if (action === 'softRedact') {
+              html.push('<span class="reveal-hint">Click to reveal soft-redacted content.</span>');
+            }
+            html.push(renderHtmlNote(messageEdit.note));
+            html.push('</article>');
+          }
+
+          html.push('</section>');
+        }
+
+        html.push('</main>');
+        html.push('</body>');
+        html.push('</html>');
+
+        if (publishedCount === 0) return '';
+        return html.join('\n') + '\n';
+      }
+
       async function exportPublishedMarkdown() {
         if (!window.api || !window.api.saveMarkdown) {
           alert('Markdown save API not available');
@@ -1771,6 +1920,25 @@
         if (!res) return;
         if (res.error) {
           alert('Error exporting Markdown: ' + res.error);
+          return;
+        }
+        setEditStatus('Exported ' + getFileNameFromPath(res.filePath));
+      }
+
+      async function exportPublishedHtml() {
+        if (!window.api || !window.api.saveHtml) {
+          alert('HTML save API not available');
+          return;
+        }
+        var html = buildPublishedHtml();
+        if (!html) {
+          alert('No published threads to export.');
+          return;
+        }
+        var res = await window.api.saveHtml(html);
+        if (!res) return;
+        if (res.error) {
+          alert('Error exporting HTML: ' + res.error);
           return;
         }
         setEditStatus('Exported ' + getFileNameFromPath(res.filePath));
@@ -2009,6 +2177,14 @@
             });
           });
         }
+        if (dom.exportHtmlBtn) {
+          dom.exportHtmlBtn.addEventListener('click', function() {
+            exportPublishedHtml().catch(function(e) {
+              console.error(e);
+              alert('Error exporting HTML');
+            });
+          });
+        }
 
         async function importAndRender() {
           if (!window.api || !window.api.openFile) {
@@ -2133,6 +2309,7 @@
             <button id="saveEditsBtn" type="button">Save Edits</button>
             <button id="loadEditsBtn" type="button">Load Edits</button>
             <button id="exportMarkdownBtn" type="button">Export Published Markdown</button>
+            <button id="exportHtmlBtn" type="button">Export Published HTML</button>
             <span id="editsStatus" aria-live="polite"></span>
           </div>
           <div id="conversationSearchControls" aria-label="Search selected conversation">

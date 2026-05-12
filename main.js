@@ -188,6 +188,22 @@ ipcMain.handle('dialog:saveMarkdown', async (event, markdown) => {
   }
 });
 
+ipcMain.handle('dialog:saveHtml', async (event, html) => {
+  try {
+    const defaultPath = path.join(__dirname, 'published-threads.html');
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export published threads to HTML',
+      defaultPath,
+      filters: [{ name: 'HTML', extensions: ['html', 'htm'] }]
+    });
+    if (canceled || !filePath) return null;
+    await fs.promises.writeFile(filePath, html || '', 'utf8');
+    return { filePath };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('dialog:loadEdits', async () => {
   try {
     const defaultPath = path.join(__dirname, 'Conversation');
