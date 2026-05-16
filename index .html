@@ -103,6 +103,46 @@
         transition: transform 0.2s ease, opacity 0.2s ease, visibility 0s linear 0s;
       }
 
+      #conversationSearchControls {
+        position: fixed;
+        top: 0;
+        left: var(--rail-width);
+        height: 100vh;
+        width: var(--sidebar-width);
+        background: rgba(18, 18, 18, 0.95);
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        transform: translateX(-100%);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: transform 0.2s ease, opacity 0.2s ease, visibility 0s linear 0.2s;
+        z-index: 27;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px;
+        color: #DDD;
+      }
+
+      #conversationSearchControls.open {
+        transform: translateX(0);
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transition: transform 0.2s ease, opacity 0.2s ease, visibility 0s linear 0s;
+      }
+
+      .search-pane-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+      }
+
+      .search-pane-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
       .sidebar-header {
         padding: 16px;
         font-size: 0.95rem;
@@ -146,6 +186,10 @@
       }
 
       #threadSidebar.open #threadList {
+        overflow-y: auto;
+      }
+
+      #conversationSearchControls.open {
         overflow-y: auto;
       }
 
@@ -206,7 +250,7 @@
         scrollbar-color: rgba(221, 221, 221, 0.34) rgba(18, 18, 18, 0.2);
       }
 
-      #mainArea.sidebar-open {
+      #mainArea.pane-open {
         margin-left: calc(var(--rail-width) + var(--sidebar-width));
         width: calc(100% - (var(--rail-width) + var(--sidebar-width)));
       }
@@ -267,7 +311,7 @@
         transition: left 0.2s ease;
       }
 
-      #mainArea.sidebar-open #paginationControls {
+      #mainArea.pane-open #paginationControls {
         left: calc(var(--rail-width) + var(--sidebar-width));
       }
 
@@ -321,18 +365,8 @@
         color: var(--reader-muted);
       }
 
-      #conversationSearchControls {
-        display: none;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 16px;
-        color: #DDD;
-      }
-
       #conversationSearchInput {
-        min-width: 240px;
-        flex: 1;
+        width: 100%;
         background: rgba(34, 34, 34, 0.92);
         color: var(--reader-text);
         border: 1px solid rgba(255, 255, 255, 0.18);
@@ -351,6 +385,7 @@
       }
 
       #conversationSearchControls button {
+        flex: 1;
         background: rgba(34, 34, 34, 0.9);
         color: var(--reader-text);
         border: 1px solid rgba(255, 255, 255, 0.16);
@@ -364,8 +399,8 @@
       }
 
       #conversationMatchCount {
-        min-width: 56px;
-        text-align: center;
+        min-width: 70px;
+        text-align: left;
         font-size: 0.9rem;
         opacity: 0.85;
       }
@@ -778,9 +813,11 @@
       var searchQuery = '';
       var searchDebounceTimer = null;
       var activeConversationId = null;
+      var activeConversationKey = null;
       var conversationSearchQuery = '';
       var conversationSearchMatches = [];
       var currentConversationMatchIndex = -1;
+      var pendingConversationMatchIndex = -1;
       var sourceExportName = '';
       var editsState = createEmptyEditsState('');
       var dom = {};
@@ -803,6 +840,7 @@
         dom.root = document.getElementById('root');
         dom.threadList = document.getElementById('threadList');
         dom.threadSearchInput = document.getElementById('threadSearchInput');
+        dom.searchToggleBtn = document.getElementById('searchToggleBtn');
         dom.paginationControls = document.getElementById('paginationControls');
         dom.pageSizeSelect = document.getElementById('pageSizeSelect');
         dom.firstPageBtn = document.getElementById('firstPageBtn');
@@ -1165,17 +1203,25 @@
         conversationsForDisplay = allConversationsForDisplay.filter(function(conversation) {
           return conversation.searchText.indexOf(query) !== -1;
         });
+        if (activeConversationKey) {
+          var activeIndex = getActiveConversationIndex();
+          if (activeIndex === -1) {
+            clearActiveConversation();
+          }
+        }
       }
 
       function resetConversationSearch() {
         conversationSearchQuery = '';
         conversationSearchMatches = [];
         currentConversationMatchIndex = -1;
+        pendingConversationMatchIndex = -1;
         clearConversationSearchHighlights(dom.root || document.getElementById('root'));
       }
 
       function clearActiveConversation() {
         activeConversationId = null;
+        activeConversationKey = null;
         resetConversationSearch();
       }
 
@@ -1200,12 +1246,9 @@
         var prevBtn = dom.conversationSearchPrevBtn || document.getElementById('conversationSearchPrevBtn');
         var nextBtn = dom.conversationSearchNextBtn || document.getElementById('conversationSearchNextBtn');
         var matchCount = dom.conversationMatchCount || document.getElementById('conversationMatchCount');
-        var hasActiveConversation = !!document.getElementById(activeConversationId);
+        var hasActiveConversation = !!getActiveConversation();
         var hasMatches = conversationSearchMatches.length > 0;
 
-        if (controls) {
-          controls.style.display = jsonData.length > 0 ? 'flex' : 'none';
-        }
         if (input) {
           input.disabled = !hasActiveConversation;
           if (input.value !== conversationSearchQuery) {
@@ -1260,13 +1303,26 @@
           return;
         }
 
-        if (currentConversationMatchIndex >= 0 && conversationSearchMatches[currentConversationMatchIndex]) {
-          conversationSearchMatches[currentConversationMatchIndex].classList.remove('current');
-        }
         currentConversationMatchIndex = (index + conversationSearchMatches.length) % conversationSearchMatches.length;
-        var currentMatch = conversationSearchMatches[currentConversationMatchIndex];
-        currentMatch.classList.add('current');
-        currentMatch.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        pendingConversationMatchIndex = currentConversationMatchIndex;
+
+        var activeIndex = getActiveConversationIndex();
+        if (activeIndex < 0) {
+          updateConversationSearchControls();
+          return;
+        }
+
+        var targetPage = getConversationPageForIndex(activeIndex);
+        if (targetPage !== currentPage) {
+          currentPage = targetPage;
+          var mainArea = document.getElementById('mainArea');
+          if (mainArea) mainArea.scrollTo({ top: 0 });
+          renderCurrentPageAfterPaint();
+          updateConversationSearchControls();
+          return;
+        }
+
+        highlightVisibleConversationSearchMatches();
         updateConversationSearchControls();
       }
 
@@ -1275,16 +1331,48 @@
         clearConversationSearchHighlights(root);
         conversationSearchMatches = [];
         currentConversationMatchIndex = -1;
+        pendingConversationMatchIndex = -1;
 
         var query = conversationSearchQuery.trim();
-        var section = document.getElementById(activeConversationId);
-        if (!query || !section) {
+        var conversation = getActiveConversation();
+        if (!query || !conversation) {
           updateConversationSearchControls();
           return;
         }
 
         var queryLower = query.toLowerCase();
+        var messages = conversation.messages || [];
+        for (var m = 0; m < messages.length; m++) {
+          var messageParts = messages[m].parts || [];
+          for (var p = 0; p < messageParts.length; p++) {
+            var value = messageParts[p].text || messageParts[p].transcript || '';
+            if (!value) continue;
+            var valueLower = value.toLowerCase();
+            var found = valueLower.indexOf(queryLower);
+            while (found !== -1) {
+              conversationSearchMatches.push({ messageIndex: m, partIndex: p, start: found });
+              found = valueLower.indexOf(queryLower, found + query.length);
+            }
+          }
+        }
+
+        if (conversationSearchMatches.length > 0) {
+          selectConversationSearchMatch(0);
+        } else {
+          updateConversationSearchControls();
+        }
+      }
+
+      function highlightVisibleConversationSearchMatches() {
+        var root = dom.root || document.getElementById('root');
+        clearConversationSearchHighlights(root);
+        var query = conversationSearchQuery.trim();
+        var section = document.getElementById(activeConversationId);
+        if (!query || !section) return;
+
+        var queryLower = query.toLowerCase();
         var textNodes = collectConversationSearchTextNodes(section);
+        var visibleMarks = [];
         for (var i = 0; i < textNodes.length; i++) {
           var textNode = textNodes[i];
           var text = textNode.nodeValue;
@@ -1303,7 +1391,7 @@
             mark.className = 'conversation-search-match';
             mark.textContent = text.slice(index, index + query.length);
             fragment.appendChild(mark);
-            conversationSearchMatches.push(mark);
+            visibleMarks.push(mark);
 
             start = index + query.length;
             index = textLower.indexOf(queryLower, start);
@@ -1315,27 +1403,63 @@
           textNode.parentNode.replaceChild(fragment, textNode);
         }
 
-        if (conversationSearchMatches.length > 0) {
-          selectConversationSearchMatch(0);
-        } else {
-          updateConversationSearchControls();
+        if (pendingConversationMatchIndex >= 0 && visibleMarks[pendingConversationMatchIndex]) {
+          var currentMark = visibleMarks[pendingConversationMatchIndex];
+          currentMark.classList.add('current');
+          currentMark.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
         }
       }
 
       function setActiveConversation(conversationId) {
-        if (conversationId === activeConversationId) {
+        var section = document.getElementById(conversationId);
+        var conversationKey = section ? section.getAttribute('data-conversation-key') : '';
+        if (!conversationKey) {
+          for (var i = 0; i < renderedConversations.length; i++) {
+            if (renderedConversations[i].id === conversationId) {
+              conversationKey = renderedConversations[i].key;
+              break;
+            }
+          }
+        }
+
+        if (conversationId === activeConversationId && conversationKey === activeConversationKey) {
           updateConversationSearchControls();
           return;
         }
 
         activeConversationId = conversationId;
-        resetConversationSearch();
+        activeConversationKey = conversationKey || activeConversationKey;
+        conversationSearchMatches = [];
+        currentConversationMatchIndex = -1;
+        pendingConversationMatchIndex = -1;
+        clearConversationSearchHighlights(dom.root || document.getElementById('root'));
+        if (conversationSearchQuery.trim()) {
+          runConversationSearch();
+        }
         updateConversationSearchControls();
         renderThreadList();
       }
 
       function getFilteredConversations() {
         return conversationsForDisplay;
+      }
+
+      function getActiveConversationIndex() {
+        if (!activeConversationKey) return -1;
+        var conversations = getFilteredConversations();
+        for (var i = 0; i < conversations.length; i++) {
+          if (conversations[i].key === activeConversationKey) return i;
+        }
+        return -1;
+      }
+
+      function getActiveConversation() {
+        var index = getActiveConversationIndex();
+        return index >= 0 ? getFilteredConversations()[index] : null;
+      }
+
+      function getConversationPageForIndex(index) {
+        return Math.floor(index / pageSize) + 1;
       }
 
       function getTotalPages() {
@@ -1631,8 +1755,9 @@
 
         for (var c = 0; c < pageConversations.length; c++) {
           var current = pageConversations[c];
-          var conversationNumber = startIndex + c + 1;
-          var conversationId = 'conversation-' + (conversationNumber - 1);
+          var conversationIndex = startIndex + c;
+          var conversationNumber = conversationIndex + 1;
+          var conversationId = 'conversation-' + conversationIndex;
           renderedConversations.push({
             id: conversationId,
             number: conversationNumber,
@@ -1645,17 +1770,34 @@
         }
         root.appendChild(pageFragment);
 
-        if (!document.getElementById(activeConversationId) && renderedConversations.length > 0) {
+        if (activeConversationKey) {
+          activeConversationId = null;
+          for (var r = 0; r < renderedConversations.length; r++) {
+            if (renderedConversations[r].key === activeConversationKey) {
+              activeConversationId = renderedConversations[r].id;
+              break;
+            }
+          }
+        }
+
+        if (!activeConversationKey && renderedConversations.length > 0) {
           activeConversationId = renderedConversations[0].id;
-          resetConversationSearch();
+          activeConversationKey = renderedConversations[0].key;
         }
 
         updatePaginationControls();
         updateEditsControls();
         updateSearchControls();
         renderThreadList();
-        if (conversationSearchQuery.trim()) {
-          runConversationSearch();
+        if (conversationSearchQuery.trim() && activeConversationKey) {
+          if (conversationSearchMatches.length === 0) {
+            runConversationSearch();
+          } else if (activeConversationId) {
+            highlightVisibleConversationSearchMatches();
+            updateConversationSearchControls();
+          } else {
+            updateConversationSearchControls();
+          }
         } else {
           updateConversationSearchControls();
         }
@@ -2050,22 +2192,52 @@
       window.addEventListener('DOMContentLoaded', function() {
         cacheDom();
         var threadToggleBtn = document.getElementById('threadsToggleBtn');
+        var searchToggleBtn = document.getElementById('searchToggleBtn');
         var editBtn = document.getElementById('editBtn');
         var threadSidebar = document.getElementById('threadSidebar');
+        var searchPane = document.getElementById('conversationSearchControls');
         var mainArea = document.getElementById('mainArea');
+
+        function updatePaneLayout() {
+          if (!mainArea) return;
+          var hasOpenPane = (threadSidebar && threadSidebar.classList.contains('open')) ||
+            (searchPane && searchPane.classList.contains('open'));
+          mainArea.classList.toggle('pane-open', hasOpenPane);
+        }
 
         function setThreadSidebarOpen(isOpen) {
           if (!threadSidebar || !mainArea || !threadToggleBtn) return;
+          if (isOpen) setSearchPaneOpen(false);
           threadSidebar.classList.toggle('open', isOpen);
-          mainArea.classList.toggle('sidebar-open', isOpen);
           threadToggleBtn.classList.toggle('active', isOpen);
           threadToggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+          updatePaneLayout();
         }
 
         if (threadToggleBtn) {
           threadToggleBtn.addEventListener('click', function() {
             var shouldOpen = !threadSidebar.classList.contains('open');
             setThreadSidebarOpen(shouldOpen);
+          });
+        }
+
+        function setSearchPaneOpen(isOpen) {
+          if (!searchPane || !searchToggleBtn) return;
+          if (isOpen) setThreadSidebarOpen(false);
+          searchPane.classList.toggle('open', isOpen);
+          searchToggleBtn.classList.toggle('active', isOpen);
+          searchToggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+          if (isOpen) updateConversationSearchControls();
+          updatePaneLayout();
+        }
+
+        if (searchToggleBtn) {
+          searchToggleBtn.addEventListener('click', function() {
+            var shouldOpen = !searchPane.classList.contains('open');
+            setSearchPaneOpen(shouldOpen);
+            if (shouldOpen && dom.conversationSearchInput && !dom.conversationSearchInput.disabled) {
+              dom.conversationSearchInput.focus();
+            }
           });
         }
 
@@ -2371,6 +2543,11 @@
             <path d="M4 5h16v2H4V5zm0 6h16v2H4v-2zm0 6h10v2H4v-2z"></path>
           </svg>
         </button>
+        <button id="searchToggleBtn" class="nav-icon-btn" type="button" aria-label="Toggle search panel" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9.5 3a6.5 6.5 0 0 1 5.18 10.43l4.45 4.44-1.41 1.42-4.45-4.45A6.5 6.5 0 1 1 9.5 3zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"></path>
+          </svg>
+        </button>
         <button id="editBtn" class="nav-icon-btn" type="button" aria-label="Edit" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zm17.71-10.04a1.004 1.004 0 0 0 0-1.42l-2.5-2.5a1.004 1.004 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 2-1.66z"></path>
@@ -2384,6 +2561,16 @@
           <input id="threadSearchInput" type="search" placeholder="Search conversations" autocomplete="off" disabled>
         </div>
         <div id="threadList"></div>
+      </aside>
+
+      <aside id="conversationSearchControls" aria-label="Search selected conversation">
+        <div class="search-pane-title">Search</div>
+        <input id="conversationSearchInput" type="search" placeholder="Search selected conversation" autocomplete="off" disabled>
+        <div class="search-pane-actions">
+          <button id="conversationSearchPrevBtn" type="button" disabled>Previous</button>
+          <button id="conversationSearchNextBtn" type="button" disabled>Next</button>
+        </div>
+        <span id="conversationMatchCount" aria-live="polite">0 of 0</span>
       </aside>
 
       <main id="mainArea">
@@ -2409,12 +2596,6 @@
           </div>
           <div id="editsControls" aria-label="Edit metadata">
             <span id="editsStatus" aria-live="polite"></span>
-          </div>
-          <div id="conversationSearchControls" aria-label="Search selected conversation">
-            <input id="conversationSearchInput" type="search" placeholder="Search selected conversation" autocomplete="off" disabled>
-            <button id="conversationSearchPrevBtn" type="button" disabled>Previous</button>
-            <span id="conversationMatchCount" aria-live="polite">0 of 0</span>
-            <button id="conversationSearchNextBtn" type="button" disabled>Next</button>
           </div>
           <div id="root"></div>
         </div>
