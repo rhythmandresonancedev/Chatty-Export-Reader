@@ -815,6 +815,7 @@
       var activeConversationId = null;
       var activeConversationKey = null;
       var conversationSearchQuery = '';
+      var conversationSearchDebounceTimer = null;
       var conversationSearchMatches = [];
       var currentConversationMatchIndex = -1;
       var pendingConversationMatchIndex = -1;
@@ -822,6 +823,11 @@
       var editsState = createEmptyEditsState('');
       var dom = {};
       var conversationSearchDebugFields = ['conversation title', 'message author role', 'message author name', 'message text', 'audio transcript'];
+      var conversationSearchIndexStats = {
+        conversationsIndexed: 0,
+        messagesIndexed: 0,
+        totalSearchableTextLength: 0
+      };
 
       function showLoading(text) {
         var el = document.getElementById('loadingOverlay');
@@ -1026,18 +1032,6 @@
         return part.text || part.transcript || '';
       }
 
-      function getSearchableMessageTextLength(message) {
-        var length = 0;
-        if (!message) return length;
-        length += (message.author || '').length;
-        length += (message.authorName || '').length;
-        var parts = message.parts || [];
-        for (var i = 0; i < parts.length; i++) {
-          length += getSearchablePartText(parts[i]).length;
-        }
-        return length;
-      }
-
       function setImportUiState(hasConversations) {
         var controls = dom.controls || document.getElementById('controls');
         if (controls) controls.style.display = hasConversations ? 'none' : 'block';
@@ -1187,21 +1181,38 @@
         }
       }
 
-      function buildConversationSearchText(title, messages) {
-        var parts = [title || ''];
+      function addConversationSearchEntry(entries, textParts, messageIndex, field, partIndex, value) {
+        if (!value) return 0;
+        var normalized = normalizeSearchText(value);
+        if (!normalized) return 0;
+        textParts.push(normalized);
+        entries.push({
+          messageIndex: messageIndex,
+          field: field,
+          partIndex: partIndex,
+          textLower: normalized
+        });
+        return String(value).length;
+      }
+
+      function buildConversationSearchData(title, messages) {
+        var entries = [];
+        var textParts = [];
+        var searchableLength = 0;
+        searchableLength += addConversationSearchEntry(entries, textParts, -1, 'title', -1, title || '');
         for (var i = 0; i < messages.length; i++) {
-          if (messages[i].author) parts.push(messages[i].author);
-          if (messages[i].authorName) parts.push(messages[i].authorName);
+          searchableLength += addConversationSearchEntry(entries, textParts, i, 'author', -1, messages[i].author);
+          searchableLength += addConversationSearchEntry(entries, textParts, i, 'authorName', -1, messages[i].authorName);
           var messageParts = messages[i].parts || [];
           for (var j = 0; j < messageParts.length; j++) {
-            if (messageParts[j].text) {
-              parts.push(messageParts[j].text);
-            } else if (messageParts[j].transcript) {
-              parts.push(messageParts[j].transcript);
-            }
+            searchableLength += addConversationSearchEntry(entries, textParts, i, 'part', j, getSearchablePartText(messageParts[j]));
           }
         }
-        return parts.join('\n').toLowerCase();
+        return {
+          entries: entries,
+          searchText: textParts.join('\n'),
+          searchableLength: searchableLength
+        };
       }
 
       function normalizeConversation(conversation) {
@@ -1212,14 +1223,15 @@
         var fallbackTs = Number(conversation.create_time) || Number(conversation.update_time) || 0;
         var sortTs = firstMessageTs || fallbackTs;
 
-        var searchText = buildConversationSearchText(conversationTitle, messages);
+        var searchData = buildConversationSearchData(conversationTitle, messages);
         return {
           title: conversationTitle,
           key: conversationKey,
           sortTimestampRaw: sortTs,
           messages: messages,
-          searchText: searchText,
-          searchTextLength: searchText.length
+          searchText: searchData.searchText,
+          searchTextLength: searchData.searchableLength,
+          searchEntries: searchData.entries
         };
       }
 
@@ -1259,6 +1271,11 @@
         allConversationsForDisplay = [];
         conversationsForDisplay = [];
         renderedConversations = [];
+        conversationSearchIndexStats = {
+          conversationsIndexed: 0,
+          messagesIndexed: 0,
+          totalSearchableTextLength: 0
+        };
         currentPage = 1;
         searchQuery = '';
         clearActiveConversation();
@@ -1266,11 +1283,14 @@
           clearTimeout(searchDebounceTimer);
           searchDebounceTimer = null;
         }
+        if (conversationSearchDebounceTimer) {
+          clearTimeout(conversationSearchDebounceTimer);
+          conversationSearchDebounceTimer = null;
+        }
         updateEditsControls();
       }
 
       function updateConversationSearchControls() {
-        var controls = dom.conversationSearchControls || document.getElementById('conversationSearchControls');
         var input = dom.conversationSearchInput || document.getElementById('conversationSearchInput');
         var prevBtn = dom.conversationSearchPrevBtn || document.getElementById('conversationSearchPrevBtn');
         var nextBtn = dom.conversationSearchNextBtn || document.getElementById('conversationSearchNextBtn');
@@ -1337,43 +1357,31 @@
         return nodes;
       }
 
-      function addSearchMatchesForValue(matches, conversation, conversationIndex, messageIndex, field, partIndex, value, queryLower, queryLength) {
-        if (!value) return;
-        var valueLower = normalizeSearchText(value);
-        var found = valueLower.indexOf(queryLower);
+      function addSearchMatchesForEntry(matches, conversation, conversationIndex, entry, queryLower, queryLength) {
+        if (!entry || !entry.textLower) return;
+        var found = entry.textLower.indexOf(queryLower);
         var occurrence = 0;
         while (found !== -1) {
           matches.push({
             conversationKey: conversation.key,
             conversationIndex: conversationIndex,
-            messageIndex: messageIndex,
-            field: field,
-            partIndex: partIndex,
+            messageIndex: entry.messageIndex,
+            field: entry.field,
+            partIndex: entry.partIndex,
             start: found,
             occurrence: occurrence
           });
           occurrence++;
-          found = valueLower.indexOf(queryLower, found + queryLength);
+          found = entry.textLower.indexOf(queryLower, found + queryLength);
         }
       }
 
       function logConversationSearchIndex(stage, query, matchCount) {
-        var messageCount = 0;
-        var totalTextLength = 0;
-        for (var i = 0; i < allConversationsForDisplay.length; i++) {
-          var conversation = allConversationsForDisplay[i];
-          var messages = conversation.messages || [];
-          messageCount += messages.length;
-          totalTextLength += (conversation.title || '').length;
-          for (var m = 0; m < messages.length; m++) {
-            totalTextLength += getSearchableMessageTextLength(messages[m]);
-          }
-        }
         console.info('[Search debug]', {
           stage: stage,
-          conversationsIndexed: allConversationsForDisplay.length,
-          messagesIndexed: messageCount,
-          totalSearchableTextLength: totalTextLength,
+          conversationsIndexed: conversationSearchIndexStats.conversationsIndexed,
+          messagesIndexed: conversationSearchIndexStats.messagesIndexed,
+          totalSearchableTextLength: conversationSearchIndexStats.totalSearchableTextLength,
           fieldsIncluded: conversationSearchDebugFields,
           queryNormalized: normalizeSearchText(query || ''),
           matchCountBeforePagination: typeof matchCount === 'number' ? matchCount : conversationSearchMatches.length
@@ -1447,15 +1455,9 @@
         var conversations = allConversationsForDisplay;
         for (var c = 0; c < conversations.length; c++) {
           var indexedConversation = conversations[c];
-          addSearchMatchesForValue(conversationSearchMatches, indexedConversation, c, -1, 'title', -1, indexedConversation.title, queryLower, queryLength);
-          var messages = indexedConversation.messages || [];
-          for (var m = 0; m < messages.length; m++) {
-            addSearchMatchesForValue(conversationSearchMatches, indexedConversation, c, m, 'author', -1, messages[m].author, queryLower, queryLength);
-            addSearchMatchesForValue(conversationSearchMatches, indexedConversation, c, m, 'authorName', -1, messages[m].authorName, queryLower, queryLength);
-            var messageParts = messages[m].parts || [];
-            for (var p = 0; p < messageParts.length; p++) {
-              addSearchMatchesForValue(conversationSearchMatches, indexedConversation, c, m, 'part', p, getSearchablePartText(messageParts[p]), queryLower, queryLength);
-            }
+          var searchEntries = indexedConversation.searchEntries || [];
+          for (var e = 0; e < searchEntries.length; e++) {
+            addSearchMatchesForEntry(conversationSearchMatches, indexedConversation, c, searchEntries[e], queryLower, queryLength);
           }
         }
         logConversationSearchIndex('query', query, conversationSearchMatches.length);
@@ -1953,8 +1955,12 @@
         for (var i = 0; i < dataArray.length; i++) {
           var conversation = dataArray[i];
           if (!conversation) continue;
+          var normalizedConversation = normalizeConversation(conversation);
           jsonData.push(conversation);
-          allConversationsForDisplay.push(normalizeConversation(conversation));
+          allConversationsForDisplay.push(normalizedConversation);
+          conversationSearchIndexStats.conversationsIndexed++;
+          conversationSearchIndexStats.messagesIndexed += normalizedConversation.messages.length;
+          conversationSearchIndexStats.totalSearchableTextLength += normalizedConversation.searchTextLength;
         }
 
         allConversationsForDisplay.sort(function(a, b) {
@@ -2381,7 +2387,6 @@
             var isEditMode = editBtn.classList.toggle('active');
             document.body.classList.toggle('edit-mode', isEditMode);
             editBtn.setAttribute('aria-pressed', isEditMode ? 'true' : 'false');
-            renderThreadList();
           });
         }
 
@@ -2504,7 +2509,13 @@
         if (conversationSearchInput) {
           conversationSearchInput.addEventListener('input', function() {
             conversationSearchQuery = conversationSearchInput.value || '';
-            runConversationSearch();
+            if (conversationSearchDebounceTimer) {
+              clearTimeout(conversationSearchDebounceTimer);
+            }
+            conversationSearchDebounceTimer = setTimeout(function() {
+              conversationSearchDebounceTimer = null;
+              runConversationSearch();
+            }, 125);
           });
         }
 
