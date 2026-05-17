@@ -816,6 +816,7 @@
       var activeConversationKey = null;
       var conversationSearchQuery = '';
       var conversationSearchDebounceTimer = null;
+      var conversationSearchLastRunQuery = '';
       var conversationSearchMatches = [];
       var currentConversationMatchIndex = -1;
       var pendingConversationMatchIndex = -1;
@@ -913,6 +914,25 @@
         return conversationEdit.messages[messageKey];
       }
 
+      function readConversationEdit(conversationKey) {
+        var conversations = editsState && editsState.conversations;
+        return (conversations && conversations[conversationKey]) || null;
+      }
+
+      function readMessageEdit(conversationKey, messageKey) {
+        var conversationEdit = readConversationEdit(conversationKey);
+        var messages = conversationEdit && conversationEdit.messages;
+        return (messages && messages[messageKey]) || null;
+      }
+
+      function getDefaultMessageEdit() {
+        return {
+          action: 'none',
+          note: '',
+          replacement: ''
+        };
+      }
+
       function setEditStatus(text) {
         var status = dom.editsStatus || document.getElementById('editsStatus');
         if (status) status.textContent = text || '';
@@ -921,6 +941,10 @@
       function updateEditsControls() {
         var controls = dom.editsControls || document.getElementById('editsControls');
         if (controls) controls.style.display = jsonData.length > 0 ? 'flex' : 'none';
+      }
+
+      function isEditModeActive() {
+        return document.body && document.body.classList.contains('edit-mode');
       }
 
       function getConversationMessages(conversation) {
@@ -1133,6 +1157,7 @@
         if (!threadList) return;
         threadList.innerHTML = '';
         var fragment = document.createDocumentFragment();
+        var isEditMode = isEditModeActive();
         for (var i = 0; i < renderedConversations.length; i++) {
           var conversation = renderedConversations[i];
           var item = document.createElement('div');
@@ -1147,15 +1172,17 @@
           var titleRow = document.createElement('div');
           titleRow.className = 'thread-title-row';
 
-          var publishLabel = document.createElement('label');
-          publishLabel.className = 'publish-toggle publish-edit-control';
-          var publishCheckbox = document.createElement('input');
-          publishCheckbox.type = 'checkbox';
-          publishCheckbox.setAttribute('data-edit-action', 'thread-conversation-publish');
-          publishCheckbox.setAttribute('data-conversation-key', conversation.key);
-          publishCheckbox.checked = !!getConversationEdit(conversation.key).publish;
-          publishLabel.appendChild(publishCheckbox);
-          titleRow.appendChild(publishLabel);
+          if (isEditMode) {
+            var publishLabel = document.createElement('label');
+            publishLabel.className = 'publish-toggle publish-edit-control';
+            var publishCheckbox = document.createElement('input');
+            publishCheckbox.type = 'checkbox';
+            publishCheckbox.setAttribute('data-edit-action', 'thread-conversation-publish');
+            publishCheckbox.setAttribute('data-conversation-key', conversation.key);
+            publishCheckbox.checked = !!(readConversationEdit(conversation.key) || {}).publish;
+            publishLabel.appendChild(publishCheckbox);
+            titleRow.appendChild(publishLabel);
+          }
 
           var title = document.createElement('div');
           title.className = 'title';
@@ -1254,6 +1281,7 @@
 
       function resetConversationSearch() {
         conversationSearchQuery = '';
+        conversationSearchLastRunQuery = '';
         conversationSearchMatches = [];
         currentConversationMatchIndex = -1;
         pendingConversationMatchIndex = -1;
@@ -1287,6 +1315,7 @@
           clearTimeout(conversationSearchDebounceTimer);
           conversationSearchDebounceTimer = null;
         }
+        conversationSearchLastRunQuery = '';
         updateEditsControls();
       }
 
@@ -1445,6 +1474,7 @@
         pendingConversationMatchIndex = -1;
 
         var query = conversationSearchQuery.trim();
+        conversationSearchLastRunQuery = query;
         if (!query || allConversationsForDisplay.length === 0) {
           updateConversationSearchControls();
           return;
@@ -1743,7 +1773,8 @@
 
       function renderMessageElement(item, conversationKey, messageIndex) {
         var messageKey = item.id || ('message-' + messageIndex);
-        var messageEdit = getMessageEdit(conversationKey, messageKey);
+        var messageEdit = readMessageEdit(conversationKey, messageKey) || getDefaultMessageEdit();
+        var isEditMode = isEditModeActive();
         var message = document.createElement('div');
         var roleClass = '';
         if (item.author === 'user') {
@@ -1775,36 +1806,40 @@
         model.textContent = item.model ? item.model : '';
         header.appendChild(model);
 
-        var actionWrap = document.createElement('label');
-        actionWrap.className = 'message-action message-edit-controls';
-        actionWrap.textContent = 'Action';
+        if (isEditMode) {
+          var actionWrap = document.createElement('label');
+          actionWrap.className = 'message-action message-edit-controls';
+          actionWrap.textContent = 'Action';
 
-        var actionSelect = document.createElement('select');
-        actionSelect.setAttribute('data-edit-action', 'message-action');
-        actionSelect.setAttribute('aria-label', 'Message edit action');
-        var actions = ['none', 'redact', 'softRedact', 'focus'];
-        for (var a = 0; a < actions.length; a++) {
-          var option = document.createElement('option');
-          option.value = actions[a];
-          option.textContent = actions[a];
-          actionSelect.appendChild(option);
+          var actionSelect = document.createElement('select');
+          actionSelect.setAttribute('data-edit-action', 'message-action');
+          actionSelect.setAttribute('aria-label', 'Message edit action');
+          var actions = ['none', 'redact', 'softRedact', 'focus'];
+          for (var a = 0; a < actions.length; a++) {
+            var option = document.createElement('option');
+            option.value = actions[a];
+            option.textContent = actions[a];
+            actionSelect.appendChild(option);
+          }
+          actionSelect.value = messageEdit.action || 'none';
+          actionWrap.appendChild(actionSelect);
+          header.appendChild(actionWrap);
         }
-        actionSelect.value = messageEdit.action || 'none';
-        actionWrap.appendChild(actionSelect);
-        header.appendChild(actionWrap);
 
         message.appendChild(header);
 
-        var noteWrap = document.createElement('label');
-        noteWrap.className = 'message-note message-edit-controls';
-        var noteInput = document.createElement('input');
-        noteInput.type = 'text';
-        noteInput.placeholder = 'Edit note';
-        noteInput.value = messageEdit.note || '';
-        noteInput.setAttribute('data-edit-action', 'message-note');
-        noteInput.setAttribute('aria-label', 'Message edit note');
-        noteWrap.appendChild(noteInput);
-        message.appendChild(noteWrap);
+        if (isEditMode) {
+          var noteWrap = document.createElement('label');
+          noteWrap.className = 'message-note message-edit-controls';
+          var noteInput = document.createElement('input');
+          noteInput.type = 'text';
+          noteInput.placeholder = 'Edit note';
+          noteInput.value = messageEdit.note || '';
+          noteInput.setAttribute('data-edit-action', 'message-note');
+          noteInput.setAttribute('aria-label', 'Message edit note');
+          noteWrap.appendChild(noteInput);
+          message.appendChild(noteWrap);
+        }
 
         var body = document.createElement('div');
         body.className = 'message-body';
@@ -1835,19 +1870,21 @@
         heading.textContent = conversationNumber + '. ' + conversation.title;
         currentConversationDiv.appendChild(heading);
 
-        var conversationEdit = getConversationEdit(conversation.key);
-        var meta = document.createElement('div');
-        meta.className = 'conversation-meta publish-edit-container';
-        var publishLabel = document.createElement('label');
-        publishLabel.className = 'publish-toggle publish-edit-control';
-        var publishCheckbox = document.createElement('input');
-        publishCheckbox.type = 'checkbox';
-        publishCheckbox.setAttribute('data-edit-action', 'conversation-publish');
-        publishCheckbox.checked = !!conversationEdit.publish;
-        publishLabel.appendChild(publishCheckbox);
-        publishLabel.appendChild(document.createTextNode('Publish'));
-        meta.appendChild(publishLabel);
-        currentConversationDiv.appendChild(meta);
+        if (isEditModeActive()) {
+          var conversationEdit = readConversationEdit(conversation.key) || {};
+          var meta = document.createElement('div');
+          meta.className = 'conversation-meta publish-edit-container';
+          var publishLabel = document.createElement('label');
+          publishLabel.className = 'publish-toggle publish-edit-control';
+          var publishCheckbox = document.createElement('input');
+          publishCheckbox.type = 'checkbox';
+          publishCheckbox.setAttribute('data-edit-action', 'conversation-publish');
+          publishCheckbox.checked = !!conversationEdit.publish;
+          publishLabel.appendChild(publishCheckbox);
+          publishLabel.appendChild(document.createTextNode('Publish'));
+          meta.appendChild(publishLabel);
+          currentConversationDiv.appendChild(meta);
+        }
 
         for (var i = 0; i < conversation.messages.length; i++) {
           currentConversationDiv.appendChild(renderMessageElement(conversation.messages[i], conversation.key, i));
@@ -1925,8 +1962,9 @@
         updateEditsControls();
         updateSearchControls();
         renderThreadList();
-        if (conversationSearchQuery.trim() && activeConversationKey) {
-          if (conversationSearchMatches.length === 0) {
+        var activeSearchQuery = conversationSearchQuery.trim();
+        if (activeSearchQuery && activeConversationKey) {
+          if (conversationSearchMatches.length === 0 && conversationSearchLastRunQuery !== activeSearchQuery) {
             runConversationSearch();
           } else if (activeConversationId) {
             highlightVisibleConversationSearchMatches();
@@ -2098,8 +2136,8 @@
         var publishedCount = 0;
         for (var i = 0; i < allConversationsForDisplay.length; i++) {
           var conversation = allConversationsForDisplay[i];
-          var conversationEdit = getConversationEdit(conversation.key);
-          if (!conversationEdit.publish) continue;
+          var conversationEdit = readConversationEdit(conversation.key);
+          if (!conversationEdit || !conversationEdit.publish) continue;
           publishedCount++;
 
           lines.push('');
@@ -2112,7 +2150,7 @@
           for (var m = 0; m < conversation.messages.length; m++) {
             var message = conversation.messages[m];
             var messageKey = message.id || ('message-' + m);
-            var messageEdit = getMessageEdit(conversation.key, messageKey);
+            var messageEdit = readMessageEdit(conversation.key, messageKey) || getDefaultMessageEdit();
             var action = messageEdit.action || 'none';
             var author = message.author || 'message';
             var messageDate = message.timestamp ? ' - ' + message.timestamp : '';
@@ -2237,8 +2275,8 @@
         var publishedCount = 0;
         for (var i = 0; i < allConversationsForDisplay.length; i++) {
           var conversation = allConversationsForDisplay[i];
-          var conversationEdit = getConversationEdit(conversation.key);
-          if (!conversationEdit.publish) continue;
+          var conversationEdit = readConversationEdit(conversation.key);
+          if (!conversationEdit || !conversationEdit.publish) continue;
           publishedCount++;
 
           html.push('<section class="conversation">');
@@ -2248,7 +2286,7 @@
           for (var m = 0; m < conversation.messages.length; m++) {
             var message = conversation.messages[m];
             var messageKey = message.id || ('message-' + m);
-            var messageEdit = getMessageEdit(conversation.key, messageKey);
+            var messageEdit = readMessageEdit(conversation.key, messageKey) || getDefaultMessageEdit();
             var action = messageEdit.action || 'none';
             var role = message.author || 'message';
             var roleClass = role.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'message';
@@ -2387,6 +2425,7 @@
             var isEditMode = editBtn.classList.toggle('active');
             document.body.classList.toggle('edit-mode', isEditMode);
             editBtn.setAttribute('aria-pressed', isEditMode ? 'true' : 'false');
+            renderCurrentPageAfterPaint();
           });
         }
 
