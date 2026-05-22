@@ -663,6 +663,33 @@
         box-shadow: inset 0 -1px 0 rgba(198, 166, 66, 0.55);
       }
 
+      body.edit-mode .span-edit-indicator {
+        filter: none;
+        color: inherit;
+        letter-spacing: 0;
+        font-family: inherit;
+        font-size: inherit;
+        font-weight: inherit;
+        user-select: text;
+        cursor: text;
+      }
+
+      body.edit-mode .span-redact.span-edit-indicator {
+        background: rgba(145, 42, 42, 0.2);
+        border: 1px solid rgba(225, 85, 85, 0.55);
+        box-shadow: inset 0 -2px 0 rgba(225, 85, 85, 0.65);
+      }
+
+      body.edit-mode .span-softRedact.span-edit-indicator {
+        background: rgba(110, 125, 155, 0.18);
+        border-bottom: 2px dotted rgba(170, 190, 230, 0.72);
+      }
+
+      body.edit-mode .span-focus.span-edit-indicator {
+        background: rgba(198, 166, 66, 0.2);
+        box-shadow: inset 0 -2px 0 rgba(198, 166, 66, 0.75);
+      }
+
       body:not(.edit-mode) .message.edit-redact {
         background: rgba(10, 10, 10, 0.78);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -946,6 +973,7 @@
         dom.conversationSearchRedactBtn = document.getElementById('conversationSearchRedactBtn');
         dom.conversationSearchSoftRedactBtn = document.getElementById('conversationSearchSoftRedactBtn');
         dom.conversationSearchFocusBtn = document.getElementById('conversationSearchFocusBtn');
+        dom.conversationSearchClearBtn = document.getElementById('conversationSearchClearBtn');
         dom.conversationMatchCount = document.getElementById('conversationMatchCount');
         dom.editsControls = document.getElementById('editsControls');
         dom.editsStatus = document.getElementById('editsStatus');
@@ -1372,7 +1400,8 @@
         return segments;
       }
 
-      function appendAnnotatedTextFragment(parent, text, annotations) {
+      function appendAnnotatedTextFragment(parent, text, annotations, options) {
+        options = options || {};
         var segments = buildAnnotatedTextSegments(text, annotations);
         for (var i = 0; i < segments.length; i++) {
           var segment = segments[i];
@@ -1382,8 +1411,9 @@
           }
           var span = document.createElement('span');
           span.className = 'span-' + segment.type;
+          if (options.editIndicators) span.className += ' span-edit-indicator';
           span.setAttribute('data-annotation-type', segment.type);
-          span.textContent = segment.type === 'redact' ? '[REDACTED]' : segment.text;
+          span.textContent = segment.type === 'redact' && !options.revealRedacted ? '[REDACTED]' : segment.text;
           parent.appendChild(span);
         }
       }
@@ -1599,6 +1629,7 @@
         var redactBtn = dom.conversationSearchRedactBtn || document.getElementById('conversationSearchRedactBtn');
         var softRedactBtn = dom.conversationSearchSoftRedactBtn || document.getElementById('conversationSearchSoftRedactBtn');
         var focusBtn = dom.conversationSearchFocusBtn || document.getElementById('conversationSearchFocusBtn');
+        var clearBtn = dom.conversationSearchClearBtn || document.getElementById('conversationSearchClearBtn');
         var matchCount = dom.conversationMatchCount || document.getElementById('conversationMatchCount');
         var hasActiveConversation = allConversationsForDisplay.length > 0;
         var hasMatches = conversationSearchMatches.length > 0;
@@ -1622,6 +1653,7 @@
         if (redactBtn) redactBtn.disabled = !hasAnnotatableMatches;
         if (softRedactBtn) softRedactBtn.disabled = !hasAnnotatableMatches;
         if (focusBtn) focusBtn.disabled = !hasAnnotatableMatches;
+        if (clearBtn) clearBtn.disabled = !hasAnnotatableMatches;
       }
 
       function clearConversationSearchHighlights(scope) {
@@ -1983,7 +2015,10 @@
           textPart.className = 'message-search-part';
           textPart.setAttribute('data-search-part-index', partIndex);
           if (isEditModeActive()) {
-            textPart.textContent = part.text;
+            appendAnnotatedTextFragment(textPart, part.text, getAnnotationsForPart(messageEdit, partIndex, part.text.length), {
+              editIndicators: true,
+              revealRedacted: true
+            });
           } else {
             appendAnnotatedTextFragment(textPart, part.text, getAnnotationsForPart(messageEdit, partIndex, part.text.length));
           }
@@ -1998,7 +2033,10 @@
           transcriptPart.setAttribute('data-search-part-index', partIndex);
           var transcriptText = '[Transcript]: ' + part.transcript;
           if (isEditModeActive()) {
-            transcriptPart.textContent = transcriptText;
+            appendAnnotatedTextFragment(transcriptPart, transcriptText, getAnnotationsForPart(messageEdit, partIndex, transcriptText.length), {
+              editIndicators: true,
+              revealRedacted: true
+            });
           } else {
             appendAnnotatedTextFragment(transcriptPart, transcriptText, getAnnotationsForPart(messageEdit, partIndex, transcriptText.length));
           }
@@ -2142,16 +2180,61 @@
         return true;
       }
 
+      function clearSpanAnnotations(conversationKey, messageKey, partIndex, start, end) {
+        if (!conversationKey || !messageKey) return false;
+        var messageEdit = getMessageEdit(conversationKey, messageKey);
+        if (!Array.isArray(messageEdit.annotations) || end <= start) return false;
+        var changed = false;
+        var nextAnnotations = [];
+        for (var i = 0; i < messageEdit.annotations.length; i++) {
+          var annotation = messageEdit.annotations[i];
+          if (!annotation || Number(annotation.partIndex) !== Number(partIndex) || annotation.end <= start || annotation.start >= end) {
+            nextAnnotations.push(annotation);
+            continue;
+          }
+
+          changed = true;
+          if (annotation.start < start) {
+            var left = Object.assign({}, annotation, {
+              id: createAnnotationId(),
+              end: start,
+              text: ''
+            });
+            nextAnnotations.push(left);
+          }
+          if (annotation.end > end) {
+            var right = Object.assign({}, annotation, {
+              id: createAnnotationId(),
+              start: end,
+              text: ''
+            });
+            nextAnnotations.push(right);
+          }
+        }
+        if (changed) messageEdit.annotations = nextAnnotations;
+        return changed;
+      }
+
       function applyCurrentSpanAnnotation(type) {
-        if (!currentSpanSelection || ['redact', 'softRedact', 'focus'].indexOf(type) === -1) return;
-        addSpanAnnotation(currentSpanSelection.conversationKey, currentSpanSelection.messageKey, {
-          type: type,
-          partIndex: currentSpanSelection.partIndex,
-          start: currentSpanSelection.start,
-          end: currentSpanSelection.end,
-          source: 'manual',
-          text: currentSpanSelection.text
-        });
+        if (!currentSpanSelection || ['redact', 'softRedact', 'focus', 'clear'].indexOf(type) === -1) return;
+        if (type === 'clear') {
+          clearSpanAnnotations(
+            currentSpanSelection.conversationKey,
+            currentSpanSelection.messageKey,
+            currentSpanSelection.partIndex,
+            currentSpanSelection.start,
+            currentSpanSelection.end
+          );
+        } else {
+          addSpanAnnotation(currentSpanSelection.conversationKey, currentSpanSelection.messageKey, {
+            type: type,
+            partIndex: currentSpanSelection.partIndex,
+            start: currentSpanSelection.start,
+            end: currentSpanSelection.end,
+            source: 'manual',
+            text: currentSpanSelection.text
+          });
+        }
         currentSpanSelection = null;
         hideAnnotationToolbars();
         setEditStatus('Unsaved edit changes');
@@ -2159,12 +2242,12 @@
       }
 
       function applySearchMatchesAsAnnotations(type) {
-        if (['redact', 'softRedact', 'focus'].indexOf(type) === -1) return;
+        if (['redact', 'softRedact', 'focus', 'clear'].indexOf(type) === -1) return;
         if (!conversationSearchQuery.trim()) return;
         if (conversationSearchLastRunQuery !== conversationSearchQuery.trim()) {
           runConversationSearch(activeConversationKey);
         }
-        var added = 0;
+        var changed = 0;
         for (var i = 0; i < conversationSearchMatches.length; i++) {
           var match = conversationSearchMatches[i];
           if (!match || match.field !== 'part' || match.messageIndex < 0 || match.partIndex < 0) continue;
@@ -2175,18 +2258,24 @@
           var part = (message.parts || [])[match.partIndex];
           var text = getSearchablePartText(part);
           if (!text) continue;
-          if (addSpanAnnotation(conversation.key, messageKey, {
-            type: type,
-            partIndex: match.partIndex,
-            start: match.start,
-            end: match.end,
-            source: 'search',
-            text: text.slice(match.start, match.end)
-          })) {
-            added++;
+          if (type === 'clear') {
+            if (clearSpanAnnotations(conversation.key, messageKey, match.partIndex, match.start, match.end)) {
+              changed++;
+            }
+          } else {
+            if (addSpanAnnotation(conversation.key, messageKey, {
+              type: type,
+              partIndex: match.partIndex,
+              start: match.start,
+              end: match.end,
+              source: 'search',
+              text: text.slice(match.start, match.end)
+            })) {
+              changed++;
+            }
           }
         }
-        if (added > 0) {
+        if (changed > 0) {
           setEditStatus('Unsaved edit changes');
           renderCurrentPageAfterPaint();
         }
@@ -2268,7 +2357,8 @@
           var annotationActions = [
             { type: 'redact', label: 'Redact' },
             { type: 'softRedact', label: 'Soft redact' },
-            { type: 'focus', label: 'Focus' }
+            { type: 'focus', label: 'Focus' },
+            { type: 'clear', label: 'Clear' }
           ];
           for (var at = 0; at < annotationActions.length; at++) {
             var annotationButton = document.createElement('button');
@@ -3060,6 +3150,7 @@
         var conversationSearchRedactBtn = dom.conversationSearchRedactBtn;
         var conversationSearchSoftRedactBtn = dom.conversationSearchSoftRedactBtn;
         var conversationSearchFocusBtn = dom.conversationSearchFocusBtn;
+        var conversationSearchClearBtn = dom.conversationSearchClearBtn;
         if (conversationSearchPrevBtn) {
           conversationSearchPrevBtn.addEventListener('click', function() {
             selectConversationSearchMatch(currentConversationMatchIndex - 1);
@@ -3083,6 +3174,11 @@
         if (conversationSearchFocusBtn) {
           conversationSearchFocusBtn.addEventListener('click', function() {
             applySearchMatchesAsAnnotations('focus');
+          });
+        }
+        if (conversationSearchClearBtn) {
+          conversationSearchClearBtn.addEventListener('click', function() {
+            applySearchMatchesAsAnnotations('clear');
           });
         }
 
@@ -3278,6 +3374,7 @@
           <button id="conversationSearchRedactBtn" type="button" disabled>Redact all matches</button>
           <button id="conversationSearchSoftRedactBtn" type="button" disabled>Soft redact all</button>
           <button id="conversationSearchFocusBtn" type="button" disabled>Focus all</button>
+          <button id="conversationSearchClearBtn" type="button" disabled>Clear annotations</button>
         </div>
         <span id="conversationMatchCount" aria-live="polite">0 of 0</span>
       </aside>
