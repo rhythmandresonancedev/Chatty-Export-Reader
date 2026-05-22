@@ -143,6 +143,21 @@
         gap: 8px;
       }
 
+      .search-pane-options,
+      .search-pane-bulk-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--reader-muted);
+      }
+
+      .search-pane-options label {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+
       .sidebar-header {
         padding: 16px;
         font-size: 0.95rem;
@@ -586,6 +601,68 @@
         font-size: 0.8rem;
       }
 
+      .annotation-toolbar {
+        display: none;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 4px 0 12px;
+        color: var(--reader-muted);
+        font-family: system-ui, 'Segoe UI', sans-serif;
+        font-size: 0.78rem;
+      }
+
+      body.edit-mode .annotation-toolbar.active {
+        display: flex;
+      }
+
+      .annotation-toolbar button,
+      .search-pane-bulk-actions button {
+        background: #1d1d1d;
+        color: #DDD;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 5px;
+        padding: 5px 7px;
+        font-size: 0.75rem;
+        cursor: pointer;
+      }
+
+      .annotation-toolbar button:disabled,
+      .search-pane-bulk-actions button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      .span-redact {
+        display: inline-block;
+        background: #050505;
+        color: rgba(238, 238, 238, 0.78);
+        border-radius: 3px;
+        padding: 0 4px;
+        font-family: system-ui, 'Segoe UI', sans-serif;
+        font-size: 0.86em;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+      }
+
+      .span-softRedact {
+        filter: blur(6px);
+        user-select: none;
+        transition: filter 0.15s ease;
+        cursor: pointer;
+      }
+
+      .message.soft-redact-revealed .span-softRedact {
+        filter: none;
+        user-select: auto;
+      }
+
+      .span-focus {
+        background: rgba(198, 166, 66, 0.28);
+        border-radius: 3px;
+        box-shadow: inset 0 -1px 0 rgba(198, 166, 66, 0.55);
+      }
+
       body:not(.edit-mode) .message.edit-redact {
         background: rgba(10, 10, 10, 0.78);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -815,11 +892,14 @@
       var activeConversationId = null;
       var activeConversationKey = null;
       var conversationSearchQuery = '';
+      var conversationSearchCaseSensitive = false;
+      var conversationSearchWholeWord = false;
       var conversationSearchDebounceTimer = null;
       var conversationSearchLastRunQuery = '';
       var conversationSearchMatches = [];
       var currentConversationMatchIndex = -1;
       var pendingConversationMatchIndex = -1;
+      var currentSpanSelection = null;
       var sourceExportName = '';
       var editsState = createEmptyEditsState('');
       var dom = {};
@@ -859,8 +939,13 @@
         dom.pageLoadingIndicator = document.getElementById('pageLoadingIndicator');
         dom.conversationSearchControls = document.getElementById('conversationSearchControls');
         dom.conversationSearchInput = document.getElementById('conversationSearchInput');
+        dom.conversationSearchCaseSensitive = document.getElementById('conversationSearchCaseSensitive');
+        dom.conversationSearchWholeWord = document.getElementById('conversationSearchWholeWord');
         dom.conversationSearchPrevBtn = document.getElementById('conversationSearchPrevBtn');
         dom.conversationSearchNextBtn = document.getElementById('conversationSearchNextBtn');
+        dom.conversationSearchRedactBtn = document.getElementById('conversationSearchRedactBtn');
+        dom.conversationSearchSoftRedactBtn = document.getElementById('conversationSearchSoftRedactBtn');
+        dom.conversationSearchFocusBtn = document.getElementById('conversationSearchFocusBtn');
         dom.conversationMatchCount = document.getElementById('conversationMatchCount');
         dom.editsControls = document.getElementById('editsControls');
         dom.editsStatus = document.getElementById('editsStatus');
@@ -908,8 +993,12 @@
           conversationEdit.messages[messageKey] = {
             action: 'none',
             note: '',
-            replacement: ''
+            replacement: '',
+            annotations: []
           };
+        }
+        if (!Array.isArray(conversationEdit.messages[messageKey].annotations)) {
+          conversationEdit.messages[messageKey].annotations = [];
         }
         return conversationEdit.messages[messageKey];
       }
@@ -929,7 +1018,8 @@
         return {
           action: 'none',
           note: '',
-          replacement: ''
+          replacement: '',
+          annotations: []
         };
       }
 
@@ -1051,9 +1141,44 @@
         return String(value || '').toLowerCase();
       }
 
+      function normalizeQueryText(value, caseSensitive) {
+        var text = String(value || '');
+        return caseSensitive ? text : text.toLowerCase();
+      }
+
       function getSearchablePartText(part) {
         if (!part) return '';
-        return part.text || part.transcript || '';
+        if (part.text) return part.text;
+        if (part.transcript) return '[Transcript]: ' + part.transcript;
+        return '';
+      }
+
+      function isWordCharacter(char) {
+        return /[A-Za-z0-9_]/.test(char || '');
+      }
+
+      function isWholeWordMatch(text, start, length) {
+        return !isWordCharacter(text.charAt(start - 1)) && !isWordCharacter(text.charAt(start + length));
+      }
+
+      function findTextMatches(text, query, options) {
+        var matches = [];
+        if (!text || !query) return matches;
+        var caseSensitive = !!(options && options.caseSensitive);
+        var wholeWord = !!(options && options.wholeWord);
+        var haystack = normalizeQueryText(text, caseSensitive);
+        var needle = normalizeQueryText(query, caseSensitive);
+        if (!needle) return matches;
+        var start = 0;
+        var found = haystack.indexOf(needle, start);
+        while (found !== -1) {
+          if (!wholeWord || isWholeWordMatch(text, found, query.length)) {
+            matches.push({ start: found, end: found + query.length });
+          }
+          start = found + Math.max(needle.length, 1);
+          found = haystack.indexOf(needle, start);
+        }
+        return matches;
       }
 
       function setImportUiState(hasConversations) {
@@ -1152,6 +1277,151 @@
         return escapeHtml(text).replace(/`/g, '&#096;');
       }
 
+      function createAnnotationId() {
+        if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+        return 'ann-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+      }
+
+      function getAnnotationRank(type) {
+        if (type === 'redact') return 3;
+        if (type === 'softRedact') return 2;
+        if (type === 'focus') return 1;
+        return 0;
+      }
+
+      function normalizeAnnotation(annotation, textLength) {
+        if (!annotation) return null;
+        var type = annotation.type;
+        if (['redact', 'softRedact', 'focus'].indexOf(type) === -1) return null;
+        var start = Math.max(0, Math.min(Number(annotation.start) || 0, textLength));
+        var end = Math.max(0, Math.min(Number(annotation.end) || 0, textLength));
+        if (end <= start) return null;
+        return {
+          id: annotation.id || createAnnotationId(),
+          type: type,
+          start: start,
+          end: end,
+          partIndex: Number(annotation.partIndex) || 0,
+          source: annotation.source || 'manual',
+          text: annotation.text || ''
+        };
+      }
+
+      function getAnnotationsForPart(messageEdit, partIndex, textLength) {
+        var annotations = (messageEdit && Array.isArray(messageEdit.annotations)) ? messageEdit.annotations : [];
+        var result = [];
+        for (var i = 0; i < annotations.length; i++) {
+          var annotation = normalizeAnnotation(annotations[i], textLength);
+          if (annotation && annotation.partIndex === partIndex) result.push(annotation);
+        }
+        return result;
+      }
+
+      function messageHasAnnotationType(messageEdit, type) {
+        var annotations = (messageEdit && Array.isArray(messageEdit.annotations)) ? messageEdit.annotations : [];
+        for (var i = 0; i < annotations.length; i++) {
+          if (annotations[i] && annotations[i].type === type) return true;
+        }
+        return false;
+      }
+
+      function buildAnnotatedTextSegments(text, annotations) {
+        text = String(text || '');
+        var points = [0, text.length];
+        var normalized = [];
+        for (var i = 0; i < (annotations || []).length; i++) {
+          var annotation = normalizeAnnotation(annotations[i], text.length);
+          if (!annotation) continue;
+          normalized.push(annotation);
+          points.push(annotation.start, annotation.end);
+        }
+        points.sort(function(a, b) { return a - b; });
+
+        var uniquePoints = [];
+        for (var p = 0; p < points.length; p++) {
+          if (p === 0 || points[p] !== points[p - 1]) uniquePoints.push(points[p]);
+        }
+
+        var segments = [];
+        for (var u = 0; u < uniquePoints.length - 1; u++) {
+          var start = uniquePoints[u];
+          var end = uniquePoints[u + 1];
+          if (end <= start) continue;
+          var type = '';
+          var rank = 0;
+          for (var a = 0; a < normalized.length; a++) {
+            var active = normalized[a];
+            if (active.start < end && active.end > start && getAnnotationRank(active.type) > rank) {
+              type = active.type;
+              rank = getAnnotationRank(active.type);
+            }
+          }
+          var previous = segments[segments.length - 1];
+          if (previous && previous.type === type && previous.end === start) {
+            previous.end = end;
+            previous.text += text.slice(start, end);
+          } else {
+            segments.push({
+              start: start,
+              end: end,
+              type: type,
+              text: text.slice(start, end)
+            });
+          }
+        }
+        return segments;
+      }
+
+      function appendAnnotatedTextFragment(parent, text, annotations) {
+        var segments = buildAnnotatedTextSegments(text, annotations);
+        for (var i = 0; i < segments.length; i++) {
+          var segment = segments[i];
+          if (!segment.type) {
+            parent.appendChild(document.createTextNode(segment.text));
+            continue;
+          }
+          var span = document.createElement('span');
+          span.className = 'span-' + segment.type;
+          span.setAttribute('data-annotation-type', segment.type);
+          span.textContent = segment.type === 'redact' ? '[REDACTED]' : segment.text;
+          parent.appendChild(span);
+        }
+      }
+
+      function renderAnnotatedTextToHtml(text, annotations) {
+        var html = [];
+        var segments = buildAnnotatedTextSegments(text, annotations);
+        for (var i = 0; i < segments.length; i++) {
+          var segment = segments[i];
+          if (!segment.type) {
+            html.push(escapeHtml(segment.text));
+          } else if (segment.type === 'redact') {
+            html.push('<span class="span-redact" data-annotation-type="redact">[REDACTED]</span>');
+          } else {
+            html.push('<span class="span-' + escapeHtmlAttribute(segment.type) + '" data-annotation-type="' + escapeHtmlAttribute(segment.type) + '">' + escapeHtml(segment.text) + '</span>');
+          }
+        }
+        return html.join('');
+      }
+
+      function renderAnnotatedTextToMarkdown(text, annotations) {
+        var output = [];
+        var segments = buildAnnotatedTextSegments(text, annotations);
+        for (var i = 0; i < segments.length; i++) {
+          var segment = segments[i];
+          if (segment.type === 'redact') {
+            output.push('[REDACTED]');
+          } else if (segment.type === 'softRedact') {
+            output.push('[SOFT REDACTED]');
+          } else if (segment.type === 'focus') {
+            output.push('**' + escapeMarkdownText(segment.text) + '**');
+          } else {
+            output.push(escapeMarkdownText(segment.text));
+          }
+        }
+        return output.join('');
+      }
+
       function renderThreadList() {
         var threadList = dom.threadList || document.getElementById('threadList');
         if (!threadList) return;
@@ -1210,13 +1480,15 @@
 
       function addConversationSearchEntry(entries, textParts, messageIndex, field, partIndex, value) {
         if (!value) return 0;
-        var normalized = normalizeSearchText(value);
+        var text = String(value);
+        var normalized = normalizeSearchText(text);
         if (!normalized) return 0;
         textParts.push(normalized);
         entries.push({
           messageIndex: messageIndex,
           field: field,
           partIndex: partIndex,
+          text: text,
           textLower: normalized
         });
         return String(value).length;
@@ -1285,6 +1557,7 @@
         conversationSearchMatches = [];
         currentConversationMatchIndex = -1;
         pendingConversationMatchIndex = -1;
+        currentSpanSelection = null;
         clearConversationSearchHighlights(dom.root || document.getElementById('root'));
       }
 
@@ -1323,9 +1596,15 @@
         var input = dom.conversationSearchInput || document.getElementById('conversationSearchInput');
         var prevBtn = dom.conversationSearchPrevBtn || document.getElementById('conversationSearchPrevBtn');
         var nextBtn = dom.conversationSearchNextBtn || document.getElementById('conversationSearchNextBtn');
+        var redactBtn = dom.conversationSearchRedactBtn || document.getElementById('conversationSearchRedactBtn');
+        var softRedactBtn = dom.conversationSearchSoftRedactBtn || document.getElementById('conversationSearchSoftRedactBtn');
+        var focusBtn = dom.conversationSearchFocusBtn || document.getElementById('conversationSearchFocusBtn');
         var matchCount = dom.conversationMatchCount || document.getElementById('conversationMatchCount');
         var hasActiveConversation = allConversationsForDisplay.length > 0;
         var hasMatches = conversationSearchMatches.length > 0;
+        var hasAnnotatableMatches = conversationSearchMatches.some(function(match) {
+          return match.field === 'part' && match.messageIndex >= 0 && match.partIndex >= 0;
+        });
 
         if (input) {
           input.disabled = !hasActiveConversation;
@@ -1340,6 +1619,9 @@
         }
         if (prevBtn) prevBtn.disabled = !hasMatches;
         if (nextBtn) nextBtn.disabled = !hasMatches;
+        if (redactBtn) redactBtn.disabled = !hasAnnotatableMatches;
+        if (softRedactBtn) softRedactBtn.disabled = !hasAnnotatableMatches;
+        if (focusBtn) focusBtn.disabled = !hasAnnotatableMatches;
       }
 
       function clearConversationSearchHighlights(scope) {
@@ -1386,22 +1668,20 @@
         return nodes;
       }
 
-      function addSearchMatchesForEntry(matches, conversation, conversationIndex, entry, queryLower, queryLength) {
-        if (!entry || !entry.textLower) return;
-        var found = entry.textLower.indexOf(queryLower);
-        var occurrence = 0;
-        while (found !== -1) {
+      function addSearchMatchesForEntry(matches, conversation, conversationIndex, entry, query, options) {
+        if (!entry || !entry.text) return;
+        var foundMatches = findTextMatches(entry.text, query, options);
+        for (var i = 0; i < foundMatches.length; i++) {
           matches.push({
             conversationKey: conversation.key,
             conversationIndex: conversationIndex,
             messageIndex: entry.messageIndex,
             field: entry.field,
             partIndex: entry.partIndex,
-            start: found,
-            occurrence: occurrence
+            start: foundMatches[i].start,
+            end: foundMatches[i].end,
+            occurrence: i
           });
-          occurrence++;
-          found = entry.textLower.indexOf(queryLower, found + queryLength);
         }
       }
 
@@ -1480,14 +1760,16 @@
           return;
         }
 
-        var queryLower = normalizeSearchText(query);
-        var queryLength = query.length;
+        var searchOptions = {
+          caseSensitive: conversationSearchCaseSensitive,
+          wholeWord: conversationSearchWholeWord
+        };
         var conversations = allConversationsForDisplay;
         for (var c = 0; c < conversations.length; c++) {
           var indexedConversation = conversations[c];
           var searchEntries = indexedConversation.searchEntries || [];
           for (var e = 0; e < searchEntries.length; e++) {
-            addSearchMatchesForEntry(conversationSearchMatches, indexedConversation, c, searchEntries[e], queryLower, queryLength);
+            addSearchMatchesForEntry(conversationSearchMatches, indexedConversation, c, searchEntries[e], query, searchOptions);
           }
         }
         logConversationSearchIndex('query', query, conversationSearchMatches.length);
@@ -1515,7 +1797,10 @@
         var section = document.getElementById(activeConversationId);
         if (!query || !section) return;
 
-        var queryLower = normalizeSearchText(query);
+        var searchOptions = {
+          caseSensitive: conversationSearchCaseSensitive,
+          wholeWord: conversationSearchWholeWord
+        };
         var currentMatch = currentConversationMatchIndex >= 0
           ? conversationSearchMatches[currentConversationMatchIndex]
           : null;
@@ -1524,21 +1809,21 @@
           var textNodeInfo = textNodes[i];
           var textNode = textNodeInfo.node;
           var text = textNode.nodeValue;
-          var textLower = normalizeSearchText(text);
           var start = 0;
-          var index = textLower.indexOf(queryLower, start);
-          if (index === -1) continue;
+          var visibleMatches = findTextMatches(text, query, searchOptions);
+          if (visibleMatches.length === 0) continue;
 
           var fragment = document.createDocumentFragment();
-          var occurrence = 0;
-          while (index !== -1) {
+          for (var matchIndex = 0; matchIndex < visibleMatches.length; matchIndex++) {
+            var visibleMatch = visibleMatches[matchIndex];
+            var index = visibleMatch.start;
             if (index > start) {
               fragment.appendChild(document.createTextNode(text.slice(start, index)));
             }
 
             var mark = document.createElement('mark');
             mark.className = 'conversation-search-match';
-            mark.textContent = text.slice(index, index + query.length);
+            mark.textContent = text.slice(visibleMatch.start, visibleMatch.end);
             if (
               currentMatch &&
               currentMatch.conversationKey === activeConversationKey &&
@@ -1548,15 +1833,13 @@
                 (currentMatch.field === 'authorName' && textNodeInfo.field === 'author')
               ) &&
               currentMatch.partIndex === textNodeInfo.partIndex &&
-              currentMatch.occurrence === occurrence
+              currentMatch.occurrence === matchIndex
             ) {
               mark.className += ' current';
             }
             fragment.appendChild(mark);
 
-            start = index + query.length;
-            occurrence++;
-            index = textLower.indexOf(queryLower, start);
+            start = visibleMatch.end;
           }
 
           if (start < text.length) {
@@ -1694,12 +1977,16 @@
         });
       }
 
-      function appendMessagePart(body, part, partIndex) {
+      function appendMessagePart(body, part, partIndex, messageEdit) {
         if (part.text) {
           var textPart = document.createElement('div');
           textPart.className = 'message-search-part';
           textPart.setAttribute('data-search-part-index', partIndex);
-          textPart.textContent = part.text;
+          if (isEditModeActive()) {
+            textPart.textContent = part.text;
+          } else {
+            appendAnnotatedTextFragment(textPart, part.text, getAnnotationsForPart(messageEdit, partIndex, part.text.length));
+          }
           body.appendChild(textPart);
           return;
         }
@@ -1709,7 +1996,12 @@
           var transcriptPart = document.createElement('div');
           transcriptPart.className = 'message-search-part';
           transcriptPart.setAttribute('data-search-part-index', partIndex);
-          transcriptPart.textContent = '[Transcript]: ' + part.transcript;
+          var transcriptText = '[Transcript]: ' + part.transcript;
+          if (isEditModeActive()) {
+            transcriptPart.textContent = transcriptText;
+          } else {
+            appendAnnotatedTextFragment(transcriptPart, transcriptText, getAnnotationsForPart(messageEdit, partIndex, transcriptText.length));
+          }
           body.appendChild(transcriptPart);
           return;
         }
@@ -1769,6 +2061,135 @@
           messageEl.appendChild(existing);
         }
         existing.textContent = messageEdit.note;
+      }
+
+      function getTextOffsetWithinContainer(container, targetNode, targetOffset) {
+        var offset = 0;
+        var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+        var node = walker.nextNode();
+        while (node) {
+          if (node === targetNode) return offset + targetOffset;
+          offset += node.nodeValue.length;
+          node = walker.nextNode();
+        }
+        return -1;
+      }
+
+      function captureCurrentSpanSelection() {
+        currentSpanSelection = null;
+        var selection = window.getSelection ? window.getSelection() : null;
+        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+        var range = selection.getRangeAt(0);
+        var startContainer = range.startContainer;
+        var endContainer = range.endContainer;
+        var startPart = startContainer.parentElement ? startContainer.parentElement.closest('.message-search-part') : null;
+        var endPart = endContainer.parentElement ? endContainer.parentElement.closest('.message-search-part') : null;
+        if (!startPart || startPart !== endPart) return;
+        var messageEl = startPart.closest ? startPart.closest('.message') : null;
+        if (!messageEl) return;
+        var start = getTextOffsetWithinContainer(startPart, startContainer, range.startOffset);
+        var end = getTextOffsetWithinContainer(startPart, endContainer, range.endOffset);
+        if (start < 0 || end < 0) return;
+        if (end < start) {
+          var swap = start;
+          start = end;
+          end = swap;
+        }
+        if (end <= start) return;
+        currentSpanSelection = {
+          conversationKey: messageEl.getAttribute('data-conversation-key'),
+          messageKey: messageEl.getAttribute('data-message-key'),
+          messageIndex: Number(messageEl.getAttribute('data-message-index')),
+          partIndex: Number(startPart.getAttribute('data-search-part-index')),
+          start: start,
+          end: end,
+          text: startPart.textContent.slice(start, end)
+        };
+        var toolbar = messageEl.querySelector('[data-annotation-toolbar]');
+        if (toolbar) toolbar.classList.add('active');
+      }
+
+      function hideAnnotationToolbars() {
+        var toolbars = document.querySelectorAll('[data-annotation-toolbar]');
+        for (var i = 0; i < toolbars.length; i++) {
+          toolbars[i].classList.remove('active');
+        }
+      }
+
+      function addSpanAnnotation(conversationKey, messageKey, annotation) {
+        if (!conversationKey || !messageKey || !annotation) return false;
+        var messageEdit = getMessageEdit(conversationKey, messageKey);
+        if (!Array.isArray(messageEdit.annotations)) messageEdit.annotations = [];
+        var normalized = normalizeAnnotation(annotation, Number.MAX_SAFE_INTEGER);
+        if (!normalized) return false;
+        normalized.id = annotation.id || createAnnotationId();
+        normalized.partIndex = Number(annotation.partIndex) || 0;
+        normalized.source = annotation.source || 'manual';
+        normalized.text = annotation.text || '';
+        for (var i = 0; i < messageEdit.annotations.length; i++) {
+          var existing = messageEdit.annotations[i];
+          if (
+            existing &&
+            existing.type === normalized.type &&
+            Number(existing.partIndex) === normalized.partIndex &&
+            Number(existing.start) === normalized.start &&
+            Number(existing.end) === normalized.end
+          ) {
+            return false;
+          }
+        }
+        messageEdit.annotations.push(normalized);
+        return true;
+      }
+
+      function applyCurrentSpanAnnotation(type) {
+        if (!currentSpanSelection || ['redact', 'softRedact', 'focus'].indexOf(type) === -1) return;
+        addSpanAnnotation(currentSpanSelection.conversationKey, currentSpanSelection.messageKey, {
+          type: type,
+          partIndex: currentSpanSelection.partIndex,
+          start: currentSpanSelection.start,
+          end: currentSpanSelection.end,
+          source: 'manual',
+          text: currentSpanSelection.text
+        });
+        currentSpanSelection = null;
+        hideAnnotationToolbars();
+        setEditStatus('Unsaved edit changes');
+        renderCurrentPageAfterPaint();
+      }
+
+      function applySearchMatchesAsAnnotations(type) {
+        if (['redact', 'softRedact', 'focus'].indexOf(type) === -1) return;
+        if (!conversationSearchQuery.trim()) return;
+        if (conversationSearchLastRunQuery !== conversationSearchQuery.trim()) {
+          runConversationSearch(activeConversationKey);
+        }
+        var added = 0;
+        for (var i = 0; i < conversationSearchMatches.length; i++) {
+          var match = conversationSearchMatches[i];
+          if (!match || match.field !== 'part' || match.messageIndex < 0 || match.partIndex < 0) continue;
+          var conversation = allConversationsForDisplay[match.conversationIndex];
+          if (!conversation || !conversation.messages || !conversation.messages[match.messageIndex]) continue;
+          var message = conversation.messages[match.messageIndex];
+          var messageKey = message.id || ('message-' + match.messageIndex);
+          var part = (message.parts || [])[match.partIndex];
+          var text = getSearchablePartText(part);
+          if (!text) continue;
+          if (addSpanAnnotation(conversation.key, messageKey, {
+            type: type,
+            partIndex: match.partIndex,
+            start: match.start,
+            end: match.end,
+            source: 'search',
+            text: text.slice(match.start, match.end)
+          })) {
+            added++;
+          }
+        }
+        if (added > 0) {
+          setEditStatus('Unsaved edit changes');
+          renderCurrentPageAfterPaint();
+        }
       }
 
       function renderMessageElement(item, conversationKey, messageIndex) {
@@ -1839,13 +2260,32 @@
           noteInput.setAttribute('aria-label', 'Message edit note');
           noteWrap.appendChild(noteInput);
           message.appendChild(noteWrap);
+
+          var annotationToolbar = document.createElement('div');
+          annotationToolbar.className = 'annotation-toolbar';
+          annotationToolbar.setAttribute('data-annotation-toolbar', 'true');
+          annotationToolbar.appendChild(document.createTextNode('Selected span:'));
+          var annotationActions = [
+            { type: 'redact', label: 'Redact' },
+            { type: 'softRedact', label: 'Soft redact' },
+            { type: 'focus', label: 'Focus' }
+          ];
+          for (var at = 0; at < annotationActions.length; at++) {
+            var annotationButton = document.createElement('button');
+            annotationButton.type = 'button';
+            annotationButton.textContent = annotationActions[at].label;
+            annotationButton.setAttribute('data-edit-action', 'span-annotation');
+            annotationButton.setAttribute('data-annotation-type', annotationActions[at].type);
+            annotationToolbar.appendChild(annotationButton);
+          }
+          message.appendChild(annotationToolbar);
         }
 
         var body = document.createElement('div');
         body.className = 'message-body';
         var parts = item.parts || [];
         for (var i = 0; i < parts.length; i++) {
-          appendMessagePart(body, parts[i], i);
+          appendMessagePart(body, parts[i], i, messageEdit);
         }
 
         message.appendChild(body);
@@ -2028,10 +2468,30 @@
             var loadedMessage = loadedMessages[messageKey] || {};
             var action = loadedMessage.action || 'none';
             if (['none', 'redact', 'softRedact', 'focus'].indexOf(action) === -1) action = 'none';
+            var annotations = [];
+            var loadedAnnotations = Array.isArray(loadedMessage.annotations) ? loadedMessage.annotations : [];
+            for (var ann = 0; ann < loadedAnnotations.length; ann++) {
+              var loadedAnnotation = loadedAnnotations[ann] || {};
+              var annotationType = loadedAnnotation.type;
+              if (['redact', 'softRedact', 'focus'].indexOf(annotationType) === -1) continue;
+              var start = Math.max(0, Number(loadedAnnotation.start) || 0);
+              var end = Math.max(0, Number(loadedAnnotation.end) || 0);
+              if (end <= start) continue;
+              annotations.push({
+                id: loadedAnnotation.id || createAnnotationId(),
+                type: annotationType,
+                partIndex: Math.max(0, Number(loadedAnnotation.partIndex) || 0),
+                start: start,
+                end: end,
+                source: loadedAnnotation.source || 'manual',
+                text: loadedAnnotation.text || ''
+              });
+            }
             normalized.conversations[conversationKey].messages[messageKey] = {
               action: action,
               note: loadedMessage.note || '',
-              replacement: loadedMessage.replacement || ''
+              replacement: loadedMessage.replacement || '',
+              annotations: annotations
             };
           }
         }
@@ -2098,15 +2558,16 @@
         lines.push('> Note: ' + escapeMarkdownText(note));
       }
 
-      function renderMessagePartsToMarkdown(parts) {
+      function renderMessagePartsToMarkdown(parts, messageEdit) {
         var lines = [];
         for (var i = 0; i < parts.length; i++) {
           var part = parts[i];
           if (part.text) {
-            var text = escapeMarkdownText(part.text);
+            var text = renderAnnotatedTextToMarkdown(part.text, getAnnotationsForPart(messageEdit, i, part.text.length));
             if (text) lines.push(text);
           } else if (part.transcript) {
-            lines.push('[Transcript]: ' + escapeMarkdownText(part.transcript));
+            var transcriptText = '[Transcript]: ' + part.transcript;
+            lines.push(renderAnnotatedTextToMarkdown(transcriptText, getAnnotationsForPart(messageEdit, i, transcriptText.length)));
           } else if (part.asset) {
             var link = resolveAssetUrl(part.asset);
             if (isImageAsset(part.asset, link)) {
@@ -2176,7 +2637,7 @@
               lines.push('');
             }
 
-            var body = renderMessagePartsToMarkdown(message.parts || []);
+            var body = renderMessagePartsToMarkdown(message.parts || [], messageEdit);
             lines.push(body || '[No renderable content]');
             appendMarkdownNote(lines, messageEdit.note);
           }
@@ -2186,21 +2647,22 @@
         return lines.join('\n') + '\n';
       }
 
-      function renderPlainTextToHtml(text) {
+      function renderPlainTextToHtml(text, annotations) {
         var normalized = typeof text === 'string'
           ? text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
           : '';
-        return '<div class="text-part">' + escapeHtml(normalized) + '</div>';
+        return '<div class="text-part">' + renderAnnotatedTextToHtml(normalized, annotations || []) + '</div>';
       }
 
-      function renderMessagePartsToHtml(parts) {
+      function renderMessagePartsToHtml(parts, messageEdit) {
         var html = [];
         for (var i = 0; i < parts.length; i++) {
           var part = parts[i];
           if (part.text) {
-            html.push(renderPlainTextToHtml(part.text));
+            html.push(renderPlainTextToHtml(part.text, getAnnotationsForPart(messageEdit, i, part.text.length)));
           } else if (part.transcript) {
-            html.push('<div class="transcript"><span>[Transcript]</span> ' + escapeHtml(part.transcript) + '</div>');
+            var transcriptText = '[Transcript]: ' + part.transcript;
+            html.push('<div class="transcript">' + renderAnnotatedTextToHtml(transcriptText, getAnnotationsForPart(messageEdit, i, transcriptText.length)) + '</div>');
           } else if (part.asset) {
             var link = resolveAssetUrl(part.asset);
             var target = resolveAssetMarkdownTarget(part.asset);
@@ -2261,6 +2723,7 @@
         html.push('.soft-redacted .message-body{filter:blur(7px);user-select:none;transition:filter .15s ease;}.soft-redacted.revealed .message-body{filter:none;user-select:auto;}');
         html.push('.soft-redacted{cursor:pointer;}.soft-redacted .reveal-hint{display:block;color:#65707d;font-size:12px;margin-top:8px;}.soft-redacted.revealed .reveal-hint{display:none;}');
         html.push('.focus{border-color:#c6a642;background:#fffdf2;box-shadow:0 0 0 2px rgba(198,166,66,.16);}');
+        html.push('.span-redact{display:inline-block;background:#050505;color:#f0f0f0;border-radius:3px;padding:0 4px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:.86em;font-weight:700;letter-spacing:.06em;}.span-softRedact{filter:blur(6px);user-select:none;transition:filter .15s ease;cursor:pointer;}.revealed .span-softRedact{filter:none;user-select:auto;}.span-focus{background:rgba(198,166,66,.28);border-radius:3px;box-shadow:inset 0 -1px 0 rgba(198,166,66,.55);}');
         html.push('.edit-note{margin-top:12px;padding:10px 12px;background:#f3f0e8;border-left:3px solid #8d7db8;color:#303943;font-size:14px;}');
         html.push('@media print{body{background:#fff;}main{max-width:none;padding:0;}.message{box-shadow:none;break-inside:avoid;}.soft-redacted .message-body{filter:none;}}');
         html.push('</style>');
@@ -2294,8 +2757,9 @@
             if (action === 'redact') className += ' redacted';
             if (action === 'softRedact') className += ' soft-redacted';
             if (action === 'focus') className += ' focus';
+            var canRevealSoft = action === 'softRedact' || messageHasAnnotationType(messageEdit, 'softRedact');
 
-            html.push('<article class="' + escapeHtmlAttribute(className) + '"' + (action === 'softRedact' ? ' onclick="this.classList.toggle(&quot;revealed&quot;)"' : '') + '>');
+            html.push('<article class="' + escapeHtmlAttribute(className) + '"' + (canRevealSoft ? ' onclick="this.classList.toggle(&quot;revealed&quot;)"' : '') + '>');
             html.push('<header class="message-header">');
             html.push('<span class="role">' + escapeHtml(role) + '</span>');
             if (message.timestamp) html.push('<span class="message-meta">' + escapeHtml(message.timestamp) + '</span>');
@@ -2310,7 +2774,7 @@
             }
 
             html.push('<div class="message-body">');
-            html.push(renderMessagePartsToHtml(message.parts || []));
+            html.push(renderMessagePartsToHtml(message.parts || [], messageEdit));
             html.push('</div>');
             if (action === 'softRedact') {
               html.push('<span class="reveal-hint">Click to reveal soft-redacted content.</span>');
@@ -2470,10 +2934,27 @@
 
         var root = dom.root;
         if (root) {
+          root.addEventListener('mouseup', function(event) {
+            if (!document.body.classList.contains('edit-mode')) return;
+            if (event.target && event.target.closest && event.target.closest('[data-annotation-toolbar]')) return;
+            hideAnnotationToolbars();
+            setTimeout(captureCurrentSpanSelection, 0);
+          });
+
           root.addEventListener('click', function(event) {
+            var spanAnnotationButton = event.target.closest ? event.target.closest('[data-edit-action="span-annotation"]') : null;
+            if (spanAnnotationButton) {
+              applyCurrentSpanAnnotation(spanAnnotationButton.getAttribute('data-annotation-type'));
+              return;
+            }
             var softMessage = event.target.closest ? event.target.closest('.message.edit-softRedact') : null;
             if (softMessage && !document.body.classList.contains('edit-mode')) {
               softMessage.classList.toggle('soft-redact-revealed');
+            }
+            var softSpan = event.target.closest ? event.target.closest('.span-softRedact') : null;
+            var softSpanMessage = softSpan && softSpan.closest ? softSpan.closest('.message') : null;
+            if (softSpanMessage && !softMessage && !document.body.classList.contains('edit-mode')) {
+              softSpanMessage.classList.toggle('soft-redact-revealed');
             }
             var conversation = event.target.closest ? event.target.closest('.conversation') : null;
             if (conversation && conversation.id) {
@@ -2558,8 +3039,27 @@
           });
         }
 
+        var conversationSearchCaseSensitiveInput = dom.conversationSearchCaseSensitive;
+        if (conversationSearchCaseSensitiveInput) {
+          conversationSearchCaseSensitiveInput.addEventListener('change', function() {
+            conversationSearchCaseSensitive = !!conversationSearchCaseSensitiveInput.checked;
+            runConversationSearch(activeConversationKey);
+          });
+        }
+
+        var conversationSearchWholeWordInput = dom.conversationSearchWholeWord;
+        if (conversationSearchWholeWordInput) {
+          conversationSearchWholeWordInput.addEventListener('change', function() {
+            conversationSearchWholeWord = !!conversationSearchWholeWordInput.checked;
+            runConversationSearch(activeConversationKey);
+          });
+        }
+
         var conversationSearchPrevBtn = dom.conversationSearchPrevBtn;
         var conversationSearchNextBtn = dom.conversationSearchNextBtn;
+        var conversationSearchRedactBtn = dom.conversationSearchRedactBtn;
+        var conversationSearchSoftRedactBtn = dom.conversationSearchSoftRedactBtn;
+        var conversationSearchFocusBtn = dom.conversationSearchFocusBtn;
         if (conversationSearchPrevBtn) {
           conversationSearchPrevBtn.addEventListener('click', function() {
             selectConversationSearchMatch(currentConversationMatchIndex - 1);
@@ -2568,6 +3068,21 @@
         if (conversationSearchNextBtn) {
           conversationSearchNextBtn.addEventListener('click', function() {
             selectConversationSearchMatch(currentConversationMatchIndex + 1);
+          });
+        }
+        if (conversationSearchRedactBtn) {
+          conversationSearchRedactBtn.addEventListener('click', function() {
+            applySearchMatchesAsAnnotations('redact');
+          });
+        }
+        if (conversationSearchSoftRedactBtn) {
+          conversationSearchSoftRedactBtn.addEventListener('click', function() {
+            applySearchMatchesAsAnnotations('softRedact');
+          });
+        }
+        if (conversationSearchFocusBtn) {
+          conversationSearchFocusBtn.addEventListener('click', function() {
+            applySearchMatchesAsAnnotations('focus');
           });
         }
 
@@ -2751,9 +3266,18 @@
       <aside id="conversationSearchControls" aria-label="Search archive">
         <div class="search-pane-title">Search</div>
         <input id="conversationSearchInput" type="search" placeholder="Search archive" autocomplete="off" disabled>
+        <div class="search-pane-options">
+          <label><input id="conversationSearchCaseSensitive" type="checkbox"> Case sensitive</label>
+          <label><input id="conversationSearchWholeWord" type="checkbox"> Whole word</label>
+        </div>
         <div class="search-pane-actions">
           <button id="conversationSearchPrevBtn" type="button" disabled>Previous</button>
           <button id="conversationSearchNextBtn" type="button" disabled>Next</button>
+        </div>
+        <div class="search-pane-bulk-actions">
+          <button id="conversationSearchRedactBtn" type="button" disabled>Redact all matches</button>
+          <button id="conversationSearchSoftRedactBtn" type="button" disabled>Soft redact all</button>
+          <button id="conversationSearchFocusBtn" type="button" disabled>Focus all</button>
         </div>
         <span id="conversationMatchCount" aria-live="polite">0 of 0</span>
       </aside>
