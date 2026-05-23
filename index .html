@@ -146,10 +146,19 @@
       .search-pane-options,
       .search-pane-bulk-actions {
         display: flex;
-        flex-wrap: wrap;
+        flex-direction: column;
+        align-items: flex-start;
         gap: 8px;
         font-size: 12px;
         color: var(--reader-muted);
+      }
+
+      .search-pane-bulk-actions {
+        display: none;
+      }
+
+      body.edit-mode .search-pane-bulk-actions {
+        display: flex;
       }
 
       .search-pane-options label {
@@ -921,8 +930,10 @@
       var conversationSearchQuery = '';
       var conversationSearchCaseSensitive = false;
       var conversationSearchWholeWord = false;
+      var conversationSearchAllPages = false;
       var conversationSearchDebounceTimer = null;
       var conversationSearchLastRunQuery = '';
+      var conversationSearchLastScopeKey = '';
       var conversationSearchMatches = [];
       var currentConversationMatchIndex = -1;
       var pendingConversationMatchIndex = -1;
@@ -968,6 +979,7 @@
         dom.conversationSearchInput = document.getElementById('conversationSearchInput');
         dom.conversationSearchCaseSensitive = document.getElementById('conversationSearchCaseSensitive');
         dom.conversationSearchWholeWord = document.getElementById('conversationSearchWholeWord');
+        dom.conversationSearchAllPages = document.getElementById('conversationSearchAllPages');
         dom.conversationSearchPrevBtn = document.getElementById('conversationSearchPrevBtn');
         dom.conversationSearchNextBtn = document.getElementById('conversationSearchNextBtn');
         dom.conversationSearchRedactBtn = document.getElementById('conversationSearchRedactBtn');
@@ -1584,6 +1596,7 @@
       function resetConversationSearch() {
         conversationSearchQuery = '';
         conversationSearchLastRunQuery = '';
+        conversationSearchLastScopeKey = '';
         conversationSearchMatches = [];
         currentConversationMatchIndex = -1;
         pendingConversationMatchIndex = -1;
@@ -1609,6 +1622,7 @@
         };
         currentPage = 1;
         searchQuery = '';
+        conversationSearchAllPages = false;
         clearActiveConversation();
         if (searchDebounceTimer) {
           clearTimeout(searchDebounceTimer);
@@ -1619,6 +1633,7 @@
           conversationSearchDebounceTimer = null;
         }
         conversationSearchLastRunQuery = '';
+        conversationSearchLastScopeKey = '';
         updateEditsControls();
       }
 
@@ -1631,8 +1646,10 @@
         var focusBtn = dom.conversationSearchFocusBtn || document.getElementById('conversationSearchFocusBtn');
         var clearBtn = dom.conversationSearchClearBtn || document.getElementById('conversationSearchClearBtn');
         var matchCount = dom.conversationMatchCount || document.getElementById('conversationMatchCount');
+        var allPagesInput = dom.conversationSearchAllPages || document.getElementById('conversationSearchAllPages');
         var hasActiveConversation = allConversationsForDisplay.length > 0;
         var hasMatches = conversationSearchMatches.length > 0;
+        var isEditMode = isEditModeActive();
         var hasAnnotatableMatches = conversationSearchMatches.some(function(match) {
           return match.field === 'part' && match.messageIndex >= 0 && match.partIndex >= 0;
         });
@@ -1648,12 +1665,16 @@
             ? (currentConversationMatchIndex + 1) + ' of ' + conversationSearchMatches.length
             : '0 of 0';
         }
+        if (allPagesInput) {
+          allPagesInput.disabled = !hasActiveConversation;
+          allPagesInput.checked = conversationSearchAllPages;
+        }
         if (prevBtn) prevBtn.disabled = !hasMatches;
         if (nextBtn) nextBtn.disabled = !hasMatches;
-        if (redactBtn) redactBtn.disabled = !hasAnnotatableMatches;
-        if (softRedactBtn) softRedactBtn.disabled = !hasAnnotatableMatches;
-        if (focusBtn) focusBtn.disabled = !hasAnnotatableMatches;
-        if (clearBtn) clearBtn.disabled = !hasAnnotatableMatches;
+        if (redactBtn) redactBtn.disabled = !isEditMode || !hasAnnotatableMatches;
+        if (softRedactBtn) softRedactBtn.disabled = !isEditMode || !hasAnnotatableMatches;
+        if (focusBtn) focusBtn.disabled = !isEditMode || !hasAnnotatableMatches;
+        if (clearBtn) clearBtn.disabled = !isEditMode || !hasAnnotatableMatches;
       }
 
       function clearConversationSearchHighlights(scope) {
@@ -1778,7 +1799,16 @@
         renderThreadList();
       }
 
-      function runConversationSearch(preferredConversationKey) {
+      function ensureConversationSearchIsCurrent() {
+        if (
+          conversationSearchLastRunQuery !== conversationSearchQuery.trim() ||
+          conversationSearchLastScopeKey !== getConversationSearchScopeKey()
+        ) {
+          runConversationSearch();
+        }
+      }
+
+      function runConversationSearch() {
         var root = dom.root || document.getElementById('root');
         clearConversationSearchHighlights(root);
         conversationSearchMatches = [];
@@ -1787,6 +1817,7 @@
 
         var query = conversationSearchQuery.trim();
         conversationSearchLastRunQuery = query;
+        conversationSearchLastScopeKey = getConversationSearchScopeKey();
         if (!query || allConversationsForDisplay.length === 0) {
           updateConversationSearchControls();
           return;
@@ -1796,30 +1827,17 @@
           caseSensitive: conversationSearchCaseSensitive,
           wholeWord: conversationSearchWholeWord
         };
-        var conversations = allConversationsForDisplay;
+        var scope = getConversationSearchScope();
+        var conversations = scope.conversations;
         for (var c = 0; c < conversations.length; c++) {
           var indexedConversation = conversations[c];
           var searchEntries = indexedConversation.searchEntries || [];
           for (var e = 0; e < searchEntries.length; e++) {
-            addSearchMatchesForEntry(conversationSearchMatches, indexedConversation, c, searchEntries[e], query, searchOptions);
+            addSearchMatchesForEntry(conversationSearchMatches, indexedConversation, scope.startIndex + c, searchEntries[e], query, searchOptions);
           }
         }
         logConversationSearchIndex('query', query, conversationSearchMatches.length);
-
-        if (conversationSearchMatches.length > 0) {
-          var initialMatchIndex = 0;
-          if (preferredConversationKey) {
-            for (var i = 0; i < conversationSearchMatches.length; i++) {
-              if (conversationSearchMatches[i].conversationKey === preferredConversationKey) {
-                initialMatchIndex = i;
-                break;
-              }
-            }
-          }
-          selectConversationSearchMatch(initialMatchIndex);
-        } else {
-          updateConversationSearchControls();
-        }
+        updateConversationSearchControls();
       }
 
       function highlightVisibleConversationSearchMatches() {
@@ -1934,8 +1952,43 @@
         return index >= 0 ? getFilteredConversations()[index] : null;
       }
 
+      function findConversationByKey(conversationKey) {
+        if (!conversationKey) return null;
+        for (var i = 0; i < allConversationsForDisplay.length; i++) {
+          if (allConversationsForDisplay[i].key === conversationKey) return allConversationsForDisplay[i];
+        }
+        return null;
+      }
+
       function getConversationPageForIndex(index) {
         return Math.floor(index / pageSize) + 1;
+      }
+
+      function getCurrentPageRange() {
+        var start = (currentPage - 1) * pageSize;
+        var end = Math.min(start + pageSize, getFilteredConversations().length);
+        return { start: start, end: end };
+      }
+
+      function getConversationSearchScope() {
+        var conversations = getFilteredConversations();
+        if (conversationSearchAllPages) {
+          return {
+            conversations: conversations,
+            startIndex: 0
+          };
+        }
+        var range = getCurrentPageRange();
+        return {
+          conversations: conversations.slice(range.start, range.end),
+          startIndex: range.start
+        };
+      }
+
+      function getConversationSearchScopeKey() {
+        if (conversationSearchAllPages) return 'all:' + getFilteredConversations().length;
+        var range = getCurrentPageRange();
+        return 'page:' + currentPage + ':' + range.start + '-' + range.end + ':' + getFilteredConversations().length;
       }
 
       function getTotalPages() {
@@ -2244,14 +2297,12 @@
       function applySearchMatchesAsAnnotations(type) {
         if (['redact', 'softRedact', 'focus', 'clear'].indexOf(type) === -1) return;
         if (!conversationSearchQuery.trim()) return;
-        if (conversationSearchLastRunQuery !== conversationSearchQuery.trim()) {
-          runConversationSearch(activeConversationKey);
-        }
+        ensureConversationSearchIsCurrent();
         var changed = 0;
         for (var i = 0; i < conversationSearchMatches.length; i++) {
           var match = conversationSearchMatches[i];
           if (!match || match.field !== 'part' || match.messageIndex < 0 || match.partIndex < 0) continue;
-          var conversation = allConversationsForDisplay[match.conversationIndex];
+          var conversation = findConversationByKey(match.conversationKey);
           if (!conversation || !conversation.messages || !conversation.messages[match.messageIndex]) continue;
           var message = conversation.messages[match.messageIndex];
           var messageKey = message.id || ('message-' + match.messageIndex);
@@ -2494,7 +2545,10 @@
         renderThreadList();
         var activeSearchQuery = conversationSearchQuery.trim();
         if (activeSearchQuery && activeConversationKey) {
-          if (conversationSearchMatches.length === 0 && conversationSearchLastRunQuery !== activeSearchQuery) {
+          if (
+            conversationSearchLastRunQuery !== activeSearchQuery ||
+            conversationSearchLastScopeKey !== getConversationSearchScopeKey()
+          ) {
             runConversationSearch();
           } else if (activeConversationId) {
             highlightVisibleConversationSearchMatches();
@@ -2979,6 +3033,7 @@
             var isEditMode = editBtn.classList.toggle('active');
             document.body.classList.toggle('edit-mode', isEditMode);
             editBtn.setAttribute('aria-pressed', isEditMode ? 'true' : 'false');
+            updateConversationSearchControls();
             renderCurrentPageAfterPaint();
           });
         }
@@ -3026,6 +3081,7 @@
         if (root) {
           root.addEventListener('mouseup', function(event) {
             if (!document.body.classList.contains('edit-mode')) return;
+            if (event.target && event.target.closest && event.target.closest('input, textarea, select, button')) return;
             if (event.target && event.target.closest && event.target.closest('[data-annotation-toolbar]')) return;
             hideAnnotationToolbars();
             setTimeout(captureCurrentSpanSelection, 0);
@@ -3037,6 +3093,7 @@
               applyCurrentSpanAnnotation(spanAnnotationButton.getAttribute('data-annotation-type'));
               return;
             }
+            if (event.target && event.target.closest && event.target.closest('input, textarea, select, button')) return;
             var softMessage = event.target.closest ? event.target.closest('.message.edit-softRedact') : null;
             if (softMessage && !document.body.classList.contains('edit-mode')) {
               softMessage.classList.toggle('soft-redact-revealed');
@@ -3133,7 +3190,7 @@
         if (conversationSearchCaseSensitiveInput) {
           conversationSearchCaseSensitiveInput.addEventListener('change', function() {
             conversationSearchCaseSensitive = !!conversationSearchCaseSensitiveInput.checked;
-            runConversationSearch(activeConversationKey);
+            runConversationSearch();
           });
         }
 
@@ -3141,7 +3198,15 @@
         if (conversationSearchWholeWordInput) {
           conversationSearchWholeWordInput.addEventListener('change', function() {
             conversationSearchWholeWord = !!conversationSearchWholeWordInput.checked;
-            runConversationSearch(activeConversationKey);
+            runConversationSearch();
+          });
+        }
+
+        var conversationSearchAllPagesInput = dom.conversationSearchAllPages;
+        if (conversationSearchAllPagesInput) {
+          conversationSearchAllPagesInput.addEventListener('change', function() {
+            conversationSearchAllPages = !!conversationSearchAllPagesInput.checked;
+            runConversationSearch();
           });
         }
 
@@ -3153,11 +3218,13 @@
         var conversationSearchClearBtn = dom.conversationSearchClearBtn;
         if (conversationSearchPrevBtn) {
           conversationSearchPrevBtn.addEventListener('click', function() {
+            ensureConversationSearchIsCurrent();
             selectConversationSearchMatch(currentConversationMatchIndex - 1);
           });
         }
         if (conversationSearchNextBtn) {
           conversationSearchNextBtn.addEventListener('click', function() {
+            ensureConversationSearchIsCurrent();
             selectConversationSearchMatch(currentConversationMatchIndex + 1);
           });
         }
@@ -3365,6 +3432,7 @@
         <div class="search-pane-options">
           <label><input id="conversationSearchCaseSensitive" type="checkbox"> Case sensitive</label>
           <label><input id="conversationSearchWholeWord" type="checkbox"> Whole word</label>
+          <label><input id="conversationSearchAllPages" type="checkbox"> Search all pages</label>
         </div>
         <div class="search-pane-actions">
           <button id="conversationSearchPrevBtn" type="button" disabled>Previous</button>

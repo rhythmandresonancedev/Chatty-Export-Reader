@@ -6,6 +6,25 @@ const { pathToFileURL } = require('url');
 let mainWindow = null;
 let importMenuItem = null;
 
+function getUserFriendlySavePath(fileName) {
+  let basePath = '';
+  try {
+    basePath = app.getPath('documents');
+  } catch (err) {
+    basePath = '';
+  }
+
+  if (!basePath) {
+    try {
+      basePath = app.getPath('desktop');
+    } catch (err) {
+      basePath = __dirname;
+    }
+  }
+
+  return path.join(basePath, fileName);
+}
+
 function buildAppMenu() {
   const template = [
     {
@@ -233,7 +252,7 @@ ipcMain.handle('dialog:openFile', async (event) => {
 
 ipcMain.handle('dialog:saveEdits', async (event, edits) => {
   try {
-    const defaultPath = path.join(__dirname, 'conversation-edits.json');
+    const defaultPath = getUserFriendlySavePath('conversation-edits.json');
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Save edit metadata',
       defaultPath,
@@ -249,7 +268,7 @@ ipcMain.handle('dialog:saveEdits', async (event, edits) => {
 
 ipcMain.handle('dialog:saveMarkdown', async (event, markdown) => {
   try {
-    const defaultPath = path.join(__dirname, 'published-threads.md');
+    const defaultPath = getUserFriendlySavePath('published-threads.md');
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export published threads to Markdown',
       defaultPath,
@@ -265,7 +284,7 @@ ipcMain.handle('dialog:saveMarkdown', async (event, markdown) => {
 
 ipcMain.handle('dialog:saveHtml', async (event, html) => {
   try {
-    const defaultPath = path.join(__dirname, 'published-threads.html');
+    const defaultPath = getUserFriendlySavePath('published-threads.html');
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export published threads to HTML',
       defaultPath,
