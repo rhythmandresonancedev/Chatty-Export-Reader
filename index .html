@@ -213,6 +213,28 @@
         overflow-y: auto;
       }
 
+      .thread-bulk-actions {
+        display: flex;
+        gap: 8px;
+        padding: 4px 0 10px;
+      }
+
+      .thread-bulk-actions button {
+        flex: 1;
+        min-width: 0;
+        background: rgba(255, 255, 255, 0.06);
+        color: #DDD;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 5px;
+        padding: 6px 8px;
+        font-size: 0.78rem;
+        cursor: pointer;
+      }
+
+      .thread-bulk-actions button:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
       #conversationSearchControls.open {
         overflow-y: auto;
       }
@@ -1470,6 +1492,24 @@
         threadList.innerHTML = '';
         var fragment = document.createDocumentFragment();
         var isEditMode = isEditModeActive();
+        if (isEditMode && renderedConversations.length > 0) {
+          var bulkActions = document.createElement('div');
+          bulkActions.className = 'thread-bulk-actions publish-edit-container';
+
+          var publishAllButton = document.createElement('button');
+          publishAllButton.type = 'button';
+          publishAllButton.textContent = 'Publish all';
+          publishAllButton.setAttribute('data-edit-action', 'thread-publish-all');
+          bulkActions.appendChild(publishAllButton);
+
+          var unpublishAllButton = document.createElement('button');
+          unpublishAllButton.type = 'button';
+          unpublishAllButton.textContent = 'Unpublish all';
+          unpublishAllButton.setAttribute('data-edit-action', 'thread-unpublish-all');
+          bulkActions.appendChild(unpublishAllButton);
+
+          fragment.appendChild(bulkActions);
+        }
         for (var i = 0; i < renderedConversations.length; i++) {
           var conversation = renderedConversations[i];
           var item = document.createElement('div');
@@ -1509,6 +1549,26 @@
           fragment.appendChild(item);
         }
         threadList.appendChild(fragment);
+      }
+
+      function setRenderedConversationsPublishState(shouldPublish) {
+        if (!renderedConversations.length) return;
+        for (var i = 0; i < renderedConversations.length; i++) {
+          var conversationKey = renderedConversations[i].key;
+          if (conversationKey) getConversationEdit(conversationKey).publish = shouldPublish;
+        }
+
+        var threadCheckboxes = document.querySelectorAll('#threadList [data-edit-action="thread-conversation-publish"]');
+        for (var tc = 0; tc < threadCheckboxes.length; tc++) {
+          threadCheckboxes[tc].checked = shouldPublish;
+        }
+
+        var conversationCheckboxes = document.querySelectorAll('.conversation [data-edit-action="conversation-publish"]');
+        for (var cb = 0; cb < conversationCheckboxes.length; cb++) {
+          conversationCheckboxes[cb].checked = shouldPublish;
+        }
+
+        setEditStatus('Unsaved edit changes');
       }
 
       function updateSearchControls() {
@@ -3041,7 +3101,16 @@
         var threadList = dom.threadList;
         if (threadList) {
           threadList.addEventListener('click', function(event) {
-            if (event.target && event.target.closest && event.target.closest('[data-edit-action]')) return;
+            var editActionTarget = event.target && event.target.closest ? event.target.closest('[data-edit-action]') : null;
+            if (editActionTarget) {
+              var editAction = editActionTarget.getAttribute('data-edit-action');
+              if (editAction === 'thread-publish-all') {
+                setRenderedConversationsPublishState(true);
+              } else if (editAction === 'thread-unpublish-all') {
+                setRenderedConversationsPublishState(false);
+              }
+              return;
+            }
             var target = event.target;
             while (target && target !== threadList && !target.classList.contains('thread-item')) {
               target = target.parentElement;
