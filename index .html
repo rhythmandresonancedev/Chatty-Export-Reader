@@ -786,9 +786,7 @@
         white-space: normal;
       }
 
-      body:not(.edit-mode) .message.edit-redact .message-preview-note,
-      body:not(.edit-mode) .message.edit-softRedact .message-preview-note,
-      body:not(.edit-mode) .message.edit-focus .message-preview-note {
+      body:not(.edit-mode) .message .message-preview-note {
         display: block;
       }
 
@@ -2201,7 +2199,7 @@
       function syncMessagePreviewNote(messageEl, messageEdit) {
         if (!messageEl || !messageEdit) return;
         var existing = messageEl.querySelector('.message-preview-note');
-        var shouldShow = !!(messageEdit.note && messageEdit.action && messageEdit.action !== 'none');
+        var shouldShow = !!messageEdit.note;
         if (!shouldShow) {
           if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
           return;
@@ -2209,7 +2207,8 @@
         if (!existing) {
           existing = document.createElement('div');
           existing.className = 'message-preview-note';
-          messageEl.appendChild(existing);
+          var body = messageEl.querySelector('.message-body');
+          messageEl.insertBefore(existing, body || null);
         }
         existing.textContent = messageEdit.note;
       }
@@ -2482,6 +2481,13 @@
           message.appendChild(annotationToolbar);
         }
 
+        if (messageEdit.note) {
+          var previewNote = document.createElement('div');
+          previewNote.className = 'message-preview-note';
+          previewNote.textContent = messageEdit.note;
+          message.appendChild(previewNote);
+        }
+
         var body = document.createElement('div');
         body.className = 'message-body';
         var parts = item.parts || [];
@@ -2490,13 +2496,6 @@
         }
 
         message.appendChild(body);
-
-        if (messageEdit.note && messageEdit.action && messageEdit.action !== 'none') {
-          var previewNote = document.createElement('div');
-          previewNote.className = 'message-preview-note';
-          previewNote.textContent = messageEdit.note;
-          message.appendChild(previewNote);
-        }
 
         return message;
       }
@@ -2822,28 +2821,30 @@
 
             lines.push('');
             lines.push('### ' + author + messageDate);
-            lines.push('');
+            appendMarkdownNote(lines, messageEdit.note);
 
             if (action === 'redact') {
+              lines.push('');
               lines.push('[REDACTED]');
-              appendMarkdownNote(lines, messageEdit.note);
               continue;
             }
 
             if (action === 'softRedact') {
+              lines.push('');
               lines.push('[SOFT REDACTED]');
-              appendMarkdownNote(lines, messageEdit.note);
               continue;
             }
 
             if (action === 'focus') {
+              lines.push('');
               lines.push('> **FOCUS**');
+              lines.push('');
+            } else {
               lines.push('');
             }
 
             var body = renderMessagePartsToMarkdown(message.parts || [], messageEdit);
             lines.push(body || '[No renderable content]');
-            appendMarkdownNote(lines, messageEdit.note);
           }
         }
 
@@ -2928,7 +2929,7 @@
         html.push('.soft-redacted{cursor:pointer;}.soft-redacted .reveal-hint{display:block;color:#65707d;font-size:12px;margin-top:8px;}.soft-redacted.revealed .reveal-hint{display:none;}');
         html.push('.focus{border-color:#c6a642;background:#fffdf2;box-shadow:0 0 0 2px rgba(198,166,66,.16);}');
         html.push('.span-redact{display:inline-block;background:#050505;color:#f0f0f0;border-radius:3px;padding:0 4px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:.86em;font-weight:700;letter-spacing:.06em;}.span-softRedact{filter:blur(6px);user-select:none;transition:filter .15s ease;cursor:pointer;}.revealed .span-softRedact{filter:none;user-select:auto;}.span-focus{background:rgba(198,166,66,.28);border-radius:3px;box-shadow:inset 0 -1px 0 rgba(198,166,66,.55);}');
-        html.push('.edit-note{margin-top:12px;padding:10px 12px;background:#f3f0e8;border-left:3px solid #8d7db8;color:#303943;font-size:14px;}');
+        html.push('.edit-note{margin:0 0 12px;padding:10px 12px;background:#f3f0e8;border-left:3px solid #8d7db8;color:#303943;font-size:14px;}');
         html.push('@media print{body{background:#fff;}main{max-width:none;padding:0;}.message{box-shadow:none;break-inside:avoid;}.soft-redacted .message-body{filter:none;}}');
         html.push('</style>');
         html.push('</head>');
@@ -2969,10 +2970,10 @@
             if (message.timestamp) html.push('<span class="message-meta">' + escapeHtml(message.timestamp) + '</span>');
             if (message.model) html.push('<span class="message-meta">' + escapeHtml(message.model) + '</span>');
             html.push('</header>');
+            html.push(renderHtmlNote(messageEdit.note));
 
             if (action === 'redact') {
               html.push('<div class="message-body">[REDACTED]</div>');
-              html.push(renderHtmlNote(messageEdit.note));
               html.push('</article>');
               continue;
             }
@@ -2983,7 +2984,6 @@
             if (action === 'softRedact') {
               html.push('<span class="reveal-hint">Click to reveal soft-redacted content.</span>');
             }
-            html.push(renderHtmlNote(messageEdit.note));
             html.push('</article>');
           }
 
