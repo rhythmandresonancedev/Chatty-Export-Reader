@@ -1,12 +1,20 @@
 {
-  "name": "oai-export-reader-electron",
+  "name": "chatty-export-reader",
   "version": "0.1.0",
-  "description": "Minimal Electron wrapper for OpenAI export viewer",
+  "description": "Desktop reader for exported AI conversations",
   "main": "main.js",
+  "author": "RhythmAndResonanceDev",
+  "license": "Apache-2.0",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder"
   },
   "devDependencies": {
-    "electron": "^27.0.0"
+    "electron": "^27.0.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.rhythmandresonance.chattyexportreader",
+    "productName": "Chatty Export Reader"
   }
 }
