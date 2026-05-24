@@ -4,6 +4,9 @@ contextBridge.exposeInMainWorld('api', {
   openFile: async () => {
     return await ipcRenderer.invoke('dialog:openFile');
   },
+  openDroppedFile: async (filePath) => {
+    return await ipcRenderer.invoke('file:openPath', filePath);
+  },
   loadDefault: async () => {
     return await ipcRenderer.invoke('file:loadDefault');
   },

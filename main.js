@@ -101,7 +101,7 @@ function buildAppMenu() {
       submenu: [
         {
           id: 'importConversation',
-          label: 'Import Conversation',
+          label: 'Open Conversation',
           click: () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('menu:importFile');
@@ -316,6 +316,21 @@ ipcMain.handle('dialog:openFile', async (event) => {
     });
     if (canceled || !filePaths || filePaths.length === 0) return null;
     const filePath = filePaths[0];
+    const content = await fs.promises.readFile(filePath, 'utf8');
+    let parsed = null;
+    try { parsed = JSON.parse(content); } catch (e) { return { error: 'Invalid JSON: ' + e.message }; }
+    return { filePath, data: parsed, assets: buildLocalAssetMap(path.dirname(filePath)) };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('file:openPath', async (event, filePath) => {
+  try {
+    if (!filePath || typeof filePath !== 'string') return { error: 'No file path provided' };
+    const stats = await fs.promises.stat(filePath);
+    if (!stats.isFile()) return { error: 'Dropped item is not a file' };
+    if (path.extname(filePath).toLowerCase() !== '.json') return { error: 'Please drop a JSON file' };
     const content = await fs.promises.readFile(filePath, 'utf8');
     let parsed = null;
     try { parsed = JSON.parse(content); } catch (e) { return { error: 'Invalid JSON: ' + e.message }; }

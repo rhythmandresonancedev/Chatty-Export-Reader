@@ -333,6 +333,10 @@
       }
 
       #controls {
+        min-height: calc(100vh - 40px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
         margin-bottom: 12px;
       }
 
@@ -889,10 +893,43 @@
       }
 
       #openFileBtn {
-        background: #222222;
+        width: min(520px, calc(100vw - var(--rail-width) - 56px));
+        min-height: 190px;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: rgba(18, 18, 18, 0.58);
         color: #DDD;
-        padding: 20px;
-        border-radius: 5px;
+        padding: 28px;
+        border: 2px dashed rgba(255, 255, 255, 0.54);
+        border-radius: 8px;
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.24);
+        cursor: pointer;
+        backdrop-filter: blur(8px);
+        font: inherit;
+        text-align: center;
+        transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+      }
+
+      #openFileBtn:hover,
+      #openFileBtn:focus-visible,
+      #controls.drag-over #openFileBtn {
+        background: rgba(18, 18, 18, 0.76);
+        border-color: rgba(255, 255, 255, 0.86);
+        transform: translateY(-1px);
+        outline: none;
+      }
+
+      .open-file-title {
+        font-size: 1.02rem;
+        font-weight: 700;
+      }
+
+      .open-file-hint {
+        color: var(--reader-muted);
+        font-size: 0.88rem;
       }
 
       /* Loading overlay */
@@ -1284,7 +1321,7 @@
 
       function setImportUiState(hasConversations) {
         var controls = dom.controls || document.getElementById('controls');
-        if (controls) controls.style.display = hasConversations ? 'none' : 'block';
+        if (controls) controls.style.display = hasConversations ? 'none' : 'flex';
         if (window.api && window.api.setImportMenuVisible) {
           window.api.setImportMenuVisible(!!hasConversations);
         }
@@ -3406,6 +3443,27 @@
           });
         }
 
+        function renderOpenedConversation(res) {
+          if (!res) return;
+          if (res.error) {
+            alert('Error loading file: ' + res.error);
+            return;
+          }
+          var parsed = res.data;
+          var toRender = null;
+          var assets = null;
+          if (Array.isArray(parsed)) {
+            toRender = parsed;
+          } else if (parsed && parsed.conversations) {
+            toRender = parsed.conversations;
+            assets = mergeAssetMaps(parsed.assets, res.assets);
+          } else if (parsed) {
+            toRender = [parsed];
+          }
+          if (!assets) assets = res.assets || null;
+          renderData(toRender, assets, getFileNameFromPath(res.filePath));
+        }
+
         async function importAndRender() {
           if (!window.api || !window.api.openFile) {
             alert('File open API not available');
@@ -3413,25 +3471,36 @@
           }
           showLoading('Loading...');
           try {
-            var res = await window.api.openFile();
-            if (!res) return;
-            if (res.error) {
-              alert('Error loading file: ' + res.error);
+            renderOpenedConversation(await window.api.openFile());
+          } catch (e) {
+            console.error(e);
+            alert('Error loading file');
+          } finally {
+            hideLoading();
+          }
+        }
+
+        async function openDroppedFile(file) {
+          if (!file) return;
+          showLoading('Loading...');
+          try {
+            if (window.api && window.api.openDroppedFile && file.path) {
+              renderOpenedConversation(await window.api.openDroppedFile(file.path));
               return;
             }
-            var parsed = res.data;
-            var toRender = null;
-            var assets = null;
-            if (Array.isArray(parsed)) {
-              toRender = parsed;
-            } else if (parsed && parsed.conversations) {
-              toRender = parsed.conversations;
-              assets = mergeAssetMaps(parsed.assets, res.assets);
-            } else if (parsed) {
-              toRender = [parsed];
+            if (!/\.json$/i.test(file.name || '')) {
+              alert('Please drop a JSON file');
+              return;
             }
-            if (!assets) assets = res.assets || null;
-            renderData(toRender, assets, getFileNameFromPath(res.filePath));
+            var text = await file.text();
+            var parsed = null;
+            try {
+              parsed = JSON.parse(text);
+            } catch (e) {
+              alert('Error loading file: Invalid JSON: ' + e.message);
+              return;
+            }
+            renderOpenedConversation({ filePath: file.name, data: parsed });
           } catch (e) {
             console.error(e);
             alert('Error loading file');
@@ -3443,6 +3512,33 @@
         var btn = document.getElementById('openFileBtn');
         if (btn) {
           btn.addEventListener('click', importAndRender);
+        }
+
+        var controls = dom.controls || document.getElementById('controls');
+        if (controls) {
+          var dragDepth = 0;
+          controls.addEventListener('dragenter', function(event) {
+            event.preventDefault();
+            dragDepth++;
+            controls.classList.add('drag-over');
+          });
+          controls.addEventListener('dragover', function(event) {
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+          });
+          controls.addEventListener('dragleave', function(event) {
+            event.preventDefault();
+            dragDepth = Math.max(0, dragDepth - 1);
+            if (dragDepth === 0) controls.classList.remove('drag-over');
+          });
+          controls.addEventListener('drop', function(event) {
+            event.preventDefault();
+            dragDepth = 0;
+            controls.classList.remove('drag-over');
+            var files = event.dataTransfer && event.dataTransfer.files;
+            if (!files || files.length === 0) return;
+            openDroppedFile(files[0]);
+          });
         }
 
         if (window.api && window.api.onImportFromMenu) {
@@ -3570,7 +3666,10 @@
       <main id="mainArea">
         <div class="content">
           <div id="controls">
-            <button id="openFileBtn">Open Conversation</button>
+            <button id="openFileBtn" type="button">
+              <span class="open-file-title">Open Conversation</span>
+              <span class="open-file-hint">Drop a JSON file here</span>
+            </button>
           </div>
           <div id="paginationControls" aria-label="Pagination">
             <label for="pageSizeSelect">
