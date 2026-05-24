@@ -11,6 +11,7 @@
         --reader-muted: rgba(221, 221, 221, 0.56);
         --reader-soft: rgba(221, 221, 221, 0.74);
         --reader-border: rgba(255, 255, 255, 0.11);
+        --app-background-image: url('./images/background.png');
       }
 
       * {
@@ -19,7 +20,7 @@
 
       body {
         font-family: 'SF Pro Display', -apple-system-headline, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-        background: url('./images/background.png') center / cover no-repeat fixed;
+        background: var(--app-background-image) center / cover no-repeat fixed;
         color: var(--reader-text);
         margin: 0;
         text-align: left;
@@ -968,6 +969,45 @@
         messagesIndexed: 0,
         totalSearchableTextLength: 0
       };
+      var backgroundStorageKey = 'chattyExportReader.background';
+      var defaultBackgroundChoice = {
+        relativePath: 'images/background.png',
+        url: './images/background.png'
+      };
+
+      function cssUrl(value) {
+        return 'url("' + String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '")';
+      }
+
+      function applyBackgroundChoice(choice, shouldStore) {
+        var background = choice || defaultBackgroundChoice;
+        var backgroundUrl = background.url || background.relativePath || defaultBackgroundChoice.url;
+        document.documentElement.style.setProperty('--app-background-image', cssUrl(backgroundUrl));
+        if (shouldStore) {
+          try {
+            localStorage.setItem(backgroundStorageKey, JSON.stringify(background));
+          } catch (e) {}
+        }
+        if (window.api && window.api.setCurrentBackground && background.relativePath) {
+          window.api.setCurrentBackground(background.relativePath);
+        }
+      }
+
+      function restoreBackgroundChoice() {
+        var stored = null;
+        try {
+          stored = localStorage.getItem(backgroundStorageKey);
+        } catch (e) {}
+        if (!stored) {
+          applyBackgroundChoice(defaultBackgroundChoice, false);
+          return;
+        }
+        try {
+          applyBackgroundChoice(JSON.parse(stored), false);
+        } catch (e) {
+          applyBackgroundChoice(defaultBackgroundChoice, false);
+        }
+      }
 
       function showLoading(text) {
         var el = document.getElementById('loadingOverlay');
@@ -3043,6 +3083,7 @@
 
       window.addEventListener('DOMContentLoaded', function() {
         cacheDom();
+        restoreBackgroundChoice();
         var threadToggleBtn = document.getElementById('threadsToggleBtn');
         var searchToggleBtn = document.getElementById('searchToggleBtn');
         var editBtn = document.getElementById('editBtn');
@@ -3437,6 +3478,11 @@
               console.error(e);
               alert('Error exporting HTML');
             });
+          });
+        }
+        if (window.api && window.api.onBackgroundFromMenu) {
+          window.api.onBackgroundFromMenu(function(background) {
+            applyBackgroundChoice(background, true);
           });
         }
 

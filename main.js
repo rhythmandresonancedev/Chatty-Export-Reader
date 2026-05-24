@@ -6,6 +6,58 @@ const { pathToFileURL } = require('url');
 let mainWindow = null;
 let importMenuItem = null;
 const appIconPath = path.join(__dirname, 'images', 'ChattyExportReaderIcon.ico');
+const defaultBackgroundPath = path.join(__dirname, 'images', 'background.png');
+const additionalBackgroundsDir = path.join(__dirname, 'images', 'additional backgrounds');
+const backgroundImageExts = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif']);
+
+function toTitleCase(text) {
+  return text.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getBackgroundChoices() {
+  const choices = [
+    {
+      id: 'background:images/background.png',
+      label: 'Default Background',
+      relativePath: 'images/background.png',
+      url: pathToFileURL(defaultBackgroundPath).href,
+      checked: true
+    }
+  ];
+
+  if (!fs.existsSync(additionalBackgroundsDir)) return choices;
+
+  let entries = [];
+  try {
+    entries = fs.readdirSync(additionalBackgroundsDir, { withFileTypes: true });
+  } catch (err) {
+    return choices;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const ext = path.extname(entry.name).toLowerCase();
+    if (!backgroundImageExts.has(ext)) continue;
+
+    const stem = path.basename(entry.name, ext).replace(/^background\s*-\s*/i, '');
+    const relativePath = path.join('images', 'additional backgrounds', entry.name).replace(/\\/g, '/');
+    choices.push({
+      id: 'background:' + relativePath,
+      label: toTitleCase(stem.replace(/[-_]+/g, ' ')),
+      relativePath,
+      url: pathToFileURL(path.join(additionalBackgroundsDir, entry.name)).href
+    });
+  }
+
+  return choices;
+}
+
+function setCheckedBackgroundMenuItem(relativePath) {
+  const menu = Menu.getApplicationMenu();
+  if (!menu || !relativePath) return;
+  const item = menu.getMenuItemById('background:' + relativePath);
+  if (item) item.checked = true;
+}
 
 function getUserFriendlySavePath(fileName) {
   let basePath = '';
@@ -27,6 +79,22 @@ function getUserFriendlySavePath(fileName) {
 }
 
 function buildAppMenu() {
+  const backgroundChoices = getBackgroundChoices();
+  const backgroundMenu = backgroundChoices.map((choice) => ({
+    id: choice.id,
+    label: choice.label,
+    type: 'radio',
+    checked: !!choice.checked,
+    click: () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('menu:setBackground', {
+          relativePath: choice.relativePath,
+          url: choice.url
+        });
+      }
+    }
+  }));
+
   const template = [
     {
       label: 'File',
@@ -93,6 +161,11 @@ function buildAppMenu() {
     {
       label: 'View',
       submenu: [
+        {
+          label: 'Background',
+          submenu: backgroundMenu
+        },
+        { type: 'separator' },
         { role: 'reload' },
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
@@ -340,4 +413,8 @@ ipcMain.on('menu:setImportVisible', (event, isVisible) => {
   importMenuItem.visible = !!isVisible;
   const menu = Menu.getApplicationMenu();
   if (menu) Menu.setApplicationMenu(menu);
+});
+
+ipcMain.on('background:setCurrent', (event, relativePath) => {
+  setCheckedBackgroundMenuItem(relativePath);
 });

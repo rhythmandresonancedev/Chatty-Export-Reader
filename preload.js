@@ -22,8 +22,14 @@ contextBridge.exposeInMainWorld('api', {
   onExportHtmlFromMenu: (callback) => {
     ipcRenderer.on('menu:exportHtml', callback);
   },
+  onBackgroundFromMenu: (callback) => {
+    ipcRenderer.on('menu:setBackground', (event, background) => callback(background));
+  },
   setImportMenuVisible: (isVisible) => {
     ipcRenderer.send('menu:setImportVisible', !!isVisible);
+  },
+  setCurrentBackground: (relativePath) => {
+    ipcRenderer.send('background:setCurrent', relativePath);
   },
   saveEdits: async (edits) => {
     return await ipcRenderer.invoke('dialog:saveEdits', edits);
