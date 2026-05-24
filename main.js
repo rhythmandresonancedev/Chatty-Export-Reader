@@ -5,6 +5,7 @@ const { pathToFileURL } = require('url');
 
 let mainWindow = null;
 let importMenuItem = null;
+const appIconPath = path.join(__dirname, 'images', 'ChattyExportReaderIcon.ico');
 
 function getUserFriendlySavePath(fileName) {
   let basePath = '';
@@ -174,6 +175,7 @@ function createWindow () {
   mainWindow = new BrowserWindow({
     width: 1000,
     height: 800,
+    icon: appIconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

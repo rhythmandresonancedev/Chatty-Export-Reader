@@ -776,11 +776,12 @@
       .message-preview-note {
         display: none;
         margin-top: 12px;
+        margin-bottom: 16px;
         padding-top: 8px;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
         color: var(--reader-muted);
         font-family: system-ui, 'Segoe UI', sans-serif;
-        font-size: 0.82rem;
+        font-size: 0.98rem;
         line-height: 1.45;
         letter-spacing: 0;
         white-space: normal;
@@ -2210,7 +2211,11 @@
           var body = messageEl.querySelector('.message-body');
           messageEl.insertBefore(existing, body || null);
         }
-        existing.textContent = messageEdit.note;
+        existing.textContent = formatMessageNote(messageEdit.note);
+      }
+
+      function formatMessageNote(note) {
+        return note ? 'NOTES: ' + note : '';
       }
 
       function getTextOffsetWithinContainer(container, targetNode, targetOffset) {
@@ -2484,7 +2489,7 @@
         if (messageEdit.note) {
           var previewNote = document.createElement('div');
           previewNote.className = 'message-preview-note';
-          previewNote.textContent = messageEdit.note;
+          previewNote.textContent = formatMessageNote(messageEdit.note);
           message.appendChild(previewNote);
         }
 
@@ -2758,7 +2763,7 @@
       function appendMarkdownNote(lines, note) {
         if (!note) return;
         lines.push('');
-        lines.push('> Note: ' + escapeMarkdownText(note));
+        lines.push('> NOTES: ' + escapeMarkdownText(note));
       }
 
       function renderMessagePartsToMarkdown(parts, messageEdit) {
@@ -2899,7 +2904,7 @@
 
       function renderHtmlNote(note) {
         if (!note) return '';
-        return '<aside class="edit-note"><strong>Note:</strong> ' + escapeHtml(note) + '</aside>';
+        return '<aside class="edit-note"><strong>NOTES:</strong> ' + escapeHtml(note) + '</aside>';
       }
 
       function buildPublishedHtml() {
@@ -2929,7 +2934,7 @@
         html.push('.soft-redacted{cursor:pointer;}.soft-redacted .reveal-hint{display:block;color:#65707d;font-size:12px;margin-top:8px;}.soft-redacted.revealed .reveal-hint{display:none;}');
         html.push('.focus{border-color:#c6a642;background:#fffdf2;box-shadow:0 0 0 2px rgba(198,166,66,.16);}');
         html.push('.span-redact{display:inline-block;background:#050505;color:#f0f0f0;border-radius:3px;padding:0 4px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:.86em;font-weight:700;letter-spacing:.06em;}.span-softRedact{filter:blur(6px);user-select:none;transition:filter .15s ease;cursor:pointer;}.revealed .span-softRedact{filter:none;user-select:auto;}.span-focus{background:rgba(198,166,66,.28);border-radius:3px;box-shadow:inset 0 -1px 0 rgba(198,166,66,.55);}');
-        html.push('.edit-note{margin:0 0 12px;padding:10px 12px;background:#f3f0e8;border-left:3px solid #8d7db8;color:#303943;font-size:14px;}');
+        html.push('.edit-note{margin:4px 0 18px;padding:10px 12px;background:#f3f0e8;border-left:3px solid #8d7db8;color:#303943;font-size:16px;}');
         html.push('@media print{body{background:#fff;}main{max-width:none;padding:0;}.message{box-shadow:none;break-inside:avoid;}.soft-redacted .message-body{filter:none;}}');
         html.push('</style>');
         html.push('</head>');
