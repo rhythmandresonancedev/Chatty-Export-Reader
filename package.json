@@ -15,6 +15,9 @@
   },
   "build": {
     "appId": "com.rhythmandresonance.chattyexportreader",
-    "productName": "Chatty Export Reader"
+    "productName": "Chatty Export Reader",
+    "win": {
+      "icon": "images/ChattyExportReaderIcon.ico"
+    }
   }
 }
