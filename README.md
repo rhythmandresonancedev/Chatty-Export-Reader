@@ -8,7 +8,7 @@ A desktop application for browsing, searching, annotating, and publishing export
 
 Large ChatGPT exports can contain hundreds or thousands of conversations and are difficult to browse directly in raw JSON format. Chatty Export Reader provides a desktop interface for exploring, searching, annotating, curating, and publishing those archives.
 
-###Installation
+## Installation
 
 ![image](images/help%20images/Releases.png)
 
