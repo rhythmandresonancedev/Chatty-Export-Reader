@@ -20,9 +20,13 @@
       "icon": "images/ChattyExportReaderIcon.ico"
     },
 	"files": [
-    "**/*",
-      "!Conversation/**/*",
+      "**/*",
+	  "!Dist/**/*",
+	  "!dist/**/*",
+	  "!Conversation/**/*",
       "!Conversations/**/*",
+      "!conversation/**/*",
+      "!conversations/**/*",
       "!*.json",
       "!**/conversations.json"
     ]
