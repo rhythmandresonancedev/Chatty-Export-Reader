@@ -1,4 +1,4 @@
-Chatty Export Reader
+## Chatty Export Reader
 
 ![image](images/help%20images/Screenshot.png)
 
@@ -16,7 +16,7 @@ Download The latest release from the sidebar in github and extract the files to 
 Then run "Chatty Export Reader.exe"
 
 
-###Development
+## Development
 
 1. Install dependencies:
 
@@ -43,9 +43,9 @@ Note: Windows may display an Unknown Publisher warning because this is a new ind
 - Export conversation views
 - Customizable background environments
 
-###Usage
+## Usage
 
-1. Getting Started
+### Getting Started
 
 ![image](images/help%20images/Open%20Conversation.png)
 
@@ -57,7 +57,7 @@ Note: Windows may display an Unknown Publisher warning because this is a new ind
 
  Note: ChatGPT exports can be large. Initial loading may take a moment for very large archives.
 
-2. Search
+### Search
 
 ![image](images/help%20images/Search%20Conversation.png)
 
@@ -65,7 +65,7 @@ Search your archive for specific words, phrases, or concepts and instantly jump 
 
 When reviewing content for publication, Edit Mode adds additional search-driven tools for Soft Redaction, Hard Redaction, and Focus Matches, allowing you to quickly identify, review, and manage sensitive content.
 
-3. Edit, Curate, and Prepare Conversations for Sharing
+### Edit, Curate, and Prepare Conversations for Sharing
 
 ![image](images/help%20images/Edit%20Conversation.png)
 
@@ -79,13 +79,13 @@ Actions can be applied at both the message level and the selected text level, al
 Redactions, notes, and focus actions are stored separately from the original conversation export. Simply editing a conversation does not permanently remove content from the source data.
 To create a safely shareable version, export a Published Archive containing only the processed content.
 
-4. Preview (Before Publishing)
+### Preview (Before Publishing)
 
 ![image](images/help%20images/Preview%20Edit%20Conversation.png)
 
 Exit Edit Mode at any time to preview exactly how the conversation will appear in a published export. Focused messages, notes, and redactions are rendered as they will appear to readers, making it easy to verify changes before sharing.
 
-5. Select Threads
+### Select Threads
 
 ![image](images/help%20images/Publish%20Conversations.png)
 
@@ -93,7 +93,7 @@ Choose exactly which conversations should be included in a published archive. Co
 
 Note: Some early ChatGPT exports may not contain conversation titles. These conversations will appear as "Untitled" until renamed or annotated.
 
-6. Save, Reload, and Publish
+### Save, Reload, and Publish
 ![image](images/help%20images/File%20Menu.png)
 
 All edits, notes, publication selections, and redaction settings can be saved separately from the original conversation export and reloaded later from the File Menu. This allows large curation projects to be completed incrementally without modifying the source archive.
@@ -114,13 +114,13 @@ Preserves visual formatting and presentation
 Recommended when using Soft Redaction or other formatting-dependent review features
 Provides the closest representation of the archive as viewed within Chatty Export Reader
 
-7. Change Backgrounds
+### Change Backgrounds
 
 ![image](images/help%20images/Background%20Menu.png)
 
 Use the View menu to select from a small handfull built-in backgrounds and create a reading environment that matches your preference.
 
-##Disclaimer
+## Disclaimer
 
 This application was lovingly vibe-coded. I take no personal responsibility for the koalaty of the source code.
 
@@ -130,6 +130,6 @@ This project was developed using a heavily AI-assisted workflow and serves as an
 
 While the application has been tested on large real-world exports, contributors should expect the occasional rough edge, surprising implementation detail, or enthusiastic shortcut taken in pursuit of shipping a useful tool.
 
-##License
+## License
 
 - Licensed under the Apache License 2.0.
