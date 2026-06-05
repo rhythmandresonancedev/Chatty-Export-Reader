@@ -18,6 +18,13 @@
     "productName": "Chatty Export Reader",
     "win": {
       "icon": "images/ChattyExportReaderIcon.ico"
-    }
+    },
+	"files": [
+    "**/*",
+      "!Conversation/**/*",
+      "!Conversations/**/*",
+      "!*.json",
+      "!**/conversations.json"
+    ]
   }
 }
