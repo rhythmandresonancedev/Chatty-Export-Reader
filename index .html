@@ -1,5 +1,8 @@
-<html>
+<!doctype html>
+<html lang="en">
   <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Chatty Conversation Reader</title>
     <style>
       :root {
@@ -1179,7 +1182,10 @@
         var messages = [];
         if (!conversation || !conversation.mapping || !conversation.current_node) return messages;
         var currentNode = conversation.current_node;
+        var visitedNodes = new Set();
         while (currentNode != null) {
+          if (visitedNodes.has(currentNode)) break;
+          visitedNodes.add(currentNode);
           var node = conversation.mapping[currentNode];
           if (!node) break;
           var metadata = (node && node.message && node.message.metadata) || {};
@@ -1190,7 +1196,7 @@
               (node.message.content.parts && node.message.content.parts.length > 0) ||
               (metadata.attachments && metadata.attachments.length > 0)
             ) &&
-            (node.message.author.role !== 'system' || metadata.is_user_system_message)
+            ((node.message.author || {}).role !== 'system' || metadata.is_user_system_message)
           ) {
             var originalAuthor = node.message.author || {};
             var author = originalAuthor.role;
@@ -1207,6 +1213,7 @@
               var contentParts = node.message.content.parts || [];
               for (var i = 0; i < contentParts.length; i++) {
                 var part = contentParts[i];
+                if (part == null) continue;
                 if (typeof part === 'string' && part.length > 0) {
                   parts.push({ text: part });
                 } else if (part.content_type == 'audio_transcription') {
@@ -1338,7 +1345,7 @@
       }
 
       function mergeAssetMaps() {
-        var merged = {};
+        var merged = Object.create(null);
         for (var i = 0; i < arguments.length; i++) {
           var source = arguments[i] || {};
           for (var key in source) {
@@ -1354,7 +1361,7 @@
         if (!asset) return '';
         var pointer = asset.asset_pointer || asset.id || asset.file_id || asset.name || '';
         if (typeof pointer !== 'string') return '';
-        return pointer.replace(/^sediment:\/\//, '');
+        return pointer.replace(/^(?:sediment|file-service):\/\//, '');
       }
 
       function resolveAssetUrl(asset) {
@@ -1366,8 +1373,7 @@
       function resolveAssetMarkdownTarget(asset) {
         var info = resolveAssetInfo(asset);
         if (!info) return '';
-        if (typeof info === 'string') return markdownLinkTarget(info);
-        return info.relativePath || markdownLinkTarget(info.url || '');
+        return typeof info === 'string' ? info : (info.url || '');
       }
 
       function resolveAssetInfo(asset) {
@@ -1383,7 +1389,7 @@
 
         for (var i = 0; i < candidates.length; i++) {
           var candidate = candidates[i];
-          if (candidate && assetsJson && assetsJson[candidate]) return assetsJson[candidate];
+          if (candidate && assetsJson && Object.prototype.hasOwnProperty.call(assetsJson, candidate)) return assetsJson[candidate];
         }
 
         return '';
@@ -2240,9 +2246,9 @@
           filePart.className = 'message-image-wrap';
           var image = document.createElement('img');
           image.className = 'message-image';
-          image.src = link;
           image.alt = 'Image attachment';
           image.loading = 'lazy';
+          image.decoding = 'async';
           image.onerror = function() {
             var placeholder = document.createElement('span');
             placeholder.className = 'asset-placeholder';
@@ -2250,6 +2256,12 @@
             if (this.parentNode) this.parentNode.replaceChild(placeholder, this);
           };
           filePart.appendChild(image);
+          if (/^file:/i.test(link) && window.api && window.api.readImage) {
+            window.api.readImage(link).then(function(result) {
+              if (result && result.url) image.src = result.url;
+              else image.onerror();
+            }).catch(function() { image.onerror(); });
+          } else image.src = link;
         } else if (isImageAsset(part.asset, link)) {
           filePart.className = 'asset-placeholder';
           filePart.textContent = '[Image unavailable]';
@@ -2822,21 +2834,6 @@
         return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
       }
 
-      function markdownLinkTarget(url) {
-        if (!url || typeof url !== 'string') return '';
-        if (url.indexOf('file://') === 0) {
-          try {
-            var parsed = new URL(url);
-            var pathParts = parsed.pathname.split('/').filter(Boolean);
-            var last = pathParts.length ? pathParts[pathParts.length - 1] : '';
-            return decodeURIComponent(last || parsed.pathname);
-          } catch (e) {
-            return url;
-          }
-        }
-        return url;
-      }
-
       function appendMarkdownNote(lines, note) {
         if (!note) return;
         lines.push('');
@@ -2856,12 +2853,12 @@
           } else if (part.asset) {
             var link = resolveAssetUrl(part.asset);
             if (isImageAsset(part.asset, link)) {
-              if (link) {
+              if (link && isSafeLink(link)) {
                 lines.push('![Image attachment](<' + resolveAssetMarkdownTarget(part.asset) + '>)');
               } else {
                 lines.push('[Image unavailable]');
               }
-            } else if (link) {
+            } else if (link && isSafeLink(link)) {
               lines.push('[File attachment](<' + resolveAssetMarkdownTarget(part.asset) + '>)');
             } else {
               lines.push('[File unavailable]');
@@ -2955,7 +2952,7 @@
             var target = resolveAssetMarkdownTarget(part.asset);
             var safeTarget = target || link;
             if (isImageAsset(part.asset, link)) {
-              if (safeTarget) {
+              if (safeTarget && isSafeLink(safeTarget)) {
                 html.push(
                   '<figure class="image-part">' +
                     '<img src="' + escapeHtmlAttribute(safeTarget) + '" alt="Image attachment" loading="lazy">' +
@@ -2965,7 +2962,7 @@
               } else {
                 html.push('<div class="asset-placeholder">[Image unavailable]</div>');
               }
-            } else if (safeTarget) {
+            } else if (safeTarget && isSafeLink(safeTarget)) {
               html.push(
                 '<div class="file-part">[File]: <a href="' + escapeHtmlAttribute(safeTarget) + '">' +
                   escapeHtml(safeTarget) +

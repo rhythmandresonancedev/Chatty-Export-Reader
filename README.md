@@ -30,10 +30,12 @@ npm install
 npm start
 ```
 
+Run the archive, image, export-portability, and redaction checks with `npm test`.
+
 
 Note: Windows may display an Unknown Publisher warning because this is a new independent application.
 
-##Features
+## Features
 
 - Browse exported conversation threads
 - Read conversations in a clean desktop interface
@@ -53,7 +55,9 @@ Note: Windows may display an Unknown Publisher warning because this is a new ind
  - Download and extract the archive.
  - Open Chatty Export Reader and select the conversations.json file from the extracted folder.
 
- The app will try to load `Conversation/conversations.json` from the project folder on startup if it exists.
+ The app loads `conversation/conversations.json` on startup when available. Newer archives split into `conversations-000.json`, `conversations-001.json`, and so on are also supported: opening any numbered part loads all numbered parts in that folder.
+
+ Keep the extracted media and `conversation_asset_file_names.json` beside the JSON files. The reader supports both older image files and newer `.dat` media, identifying image formats from their contents when possible. Missing media is shown as an unavailable attachment.
 
  Note: ChatGPT exports can be large. Initial loading may take a moment for very large archives.
 
@@ -108,17 +112,21 @@ Portable and easy to edit
 Ideal for documentation workflows
 Compatible with GitHub, Obsidian, and other Markdown-based tools
 
+Local attachments are copied into a companion `published-threads-assets-...` folder with usable file extensions. Keep this folder beside the Markdown file when moving or sharing it. Only attachments referenced in the published content are copied.
+
 -HTML Export
 
 Preserves visual formatting and presentation
 Recommended when using Soft Redaction or other formatting-dependent review features
 Provides the closest representation of the archive as viewed within Chatty Export Reader
 
+Local images are embedded directly in the HTML, so they travel with the file and work offline. Other local attachments use a companion folder. Remote attachments still require access to their original URLs.
+
 ### Change Backgrounds
 
 ![image](images/help%20images/Background%20Menu.png)
 
-Use the View menu to select from a small handfull built-in backgrounds and create a reading environment that matches your preference.
+Use the View menu to select from a handful of built-in backgrounds and create a reading environment that matches your preference.
 
 ## Disclaimer
 

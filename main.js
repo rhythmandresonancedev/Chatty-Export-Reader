@@ -2,6 +2,17 @@ const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
+const { buildLocalAssetMap } = require('./asset-map');
+const { findDefaultArchive, readArchive } = require('./archive');
+const { assetByUrl, imageDataUrl, savePortableExport } = require('./export-assets');
+
+let currentAssets = {};
+
+async function openArchive(filePath) {
+  const data = await readArchive(filePath);
+  currentAssets = buildLocalAssetMap(path.dirname(filePath));
+  return { filePath, data, assets: currentAssets };
+}
 
 let mainWindow = null;
 let importMenuItem = null;
@@ -200,50 +211,6 @@ function buildAppMenu() {
   importMenuItem = menu.getMenuItemById('importConversation');
 }
 
-function buildLocalAssetMap(baseDir) {
-  const assetMap = {};
-  if (!baseDir || !fs.existsSync(baseDir)) return assetMap;
-
-  const assetExts = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif', '.mp4', '.webm', '.mp3', '.wav', '.m4a']);
-  function scanDir(dir, depth) {
-    if (depth > 2) return;
-    let entries = [];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch (e) {
-      return;
-    }
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        scanDir(fullPath, depth + 1);
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      const ext = path.extname(entry.name).toLowerCase();
-      if (!assetExts.has(ext)) continue;
-
-      const fileUrl = pathToFileURL(fullPath).href;
-      const assetInfo = {
-        url: fileUrl,
-        relativePath: path.relative(baseDir, fullPath).replace(/\\/g, '/')
-      };
-      const stem = path.basename(entry.name, ext);
-      const unsanitizedStem = stem.replace(/-sanitized$/, '');
-
-      assetMap[entry.name] = assetInfo;
-      assetMap[stem] = assetInfo;
-      assetMap[unsanitizedStem] = assetInfo;
-      assetMap['sediment://' + unsanitizedStem] = assetInfo;
-    }
-  }
-
-  scanDir(baseDir, 0);
-
-  return assetMap;
-}
-
 function createWindow () {
   mainWindow = new BrowserWindow({
     width: 1000,
@@ -262,11 +229,9 @@ function createWindow () {
   // Prevent in-app navigation to external pages; open externals in default browser
   const { shell } = require('electron');
 
-  // Deny any attempt to open a new window from the renderer.
-  // Previously we forwarded these to the external browser; to avoid creating
-  // another window, we simply deny them now so nothing else opens automatically.
+  // Open web links outside the reader without creating app windows.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
 
@@ -286,7 +251,7 @@ function createWindow () {
 
   
 
-  mainWindow.loadFile('index .html')
+  mainWindow.loadFile(path.join(__dirname, 'index .html'))
 }
 
 app.disableHardwareAcceleration();
@@ -316,10 +281,7 @@ ipcMain.handle('dialog:openFile', async (event) => {
     });
     if (canceled || !filePaths || filePaths.length === 0) return null;
     const filePath = filePaths[0];
-    const content = await fs.promises.readFile(filePath, 'utf8');
-    let parsed = null;
-    try { parsed = JSON.parse(content); } catch (e) { return { error: 'Invalid JSON: ' + e.message }; }
-    return { filePath, data: parsed, assets: buildLocalAssetMap(path.dirname(filePath)) };
+    return await openArchive(filePath);
   } catch (err) {
     return { error: err.message };
   }
@@ -331,10 +293,7 @@ ipcMain.handle('file:openPath', async (event, filePath) => {
     const stats = await fs.promises.stat(filePath);
     if (!stats.isFile()) return { error: 'Dropped item is not a file' };
     if (path.extname(filePath).toLowerCase() !== '.json') return { error: 'Please drop a JSON file' };
-    const content = await fs.promises.readFile(filePath, 'utf8');
-    let parsed = null;
-    try { parsed = JSON.parse(content); } catch (e) { return { error: 'Invalid JSON: ' + e.message }; }
-    return { filePath, data: parsed, assets: buildLocalAssetMap(path.dirname(filePath)) };
+    return await openArchive(filePath);
   } catch (err) {
     return { error: err.message };
   }
@@ -365,7 +324,7 @@ ipcMain.handle('dialog:saveMarkdown', async (event, markdown) => {
       filters: [{ name: 'Markdown', extensions: ['md'] }]
     });
     if (canceled || !filePath) return null;
-    await fs.promises.writeFile(filePath, markdown || '', 'utf8');
+    await savePortableExport(filePath, markdown || '', 'markdown', currentAssets);
     return { filePath };
   } catch (err) {
     return { error: err.message };
@@ -381,7 +340,7 @@ ipcMain.handle('dialog:saveHtml', async (event, html) => {
       filters: [{ name: 'HTML', extensions: ['html', 'htm'] }]
     });
     if (canceled || !filePath) return null;
-    await fs.promises.writeFile(filePath, html || '', 'utf8');
+    await savePortableExport(filePath, html || '', 'html', currentAssets);
     return { filePath };
   } catch (err) {
     return { error: err.message };
@@ -411,17 +370,22 @@ ipcMain.handle('dialog:loadEdits', async () => {
 // Handler: attempt to load default conversations.json in Conversation folder
 ipcMain.handle('file:loadDefault', async () => {
   try {
-    const defaultFile = path.join(__dirname, 'Conversation', 'conversations.json');
-    if (!fs.existsSync(defaultFile)) return { error: 'Default conversations.json not found', data: null };
-    const content = await fs.promises.readFile(defaultFile, 'utf8');
-    let parsed = null;
-    try { parsed = JSON.parse(content); } catch (e) { return { error: 'Invalid JSON: ' + e.message }; }
-    return { filePath: defaultFile, data: parsed, assets: buildLocalAssetMap(path.dirname(defaultFile)) };
+    const defaultFile = await findDefaultArchive(path.join(__dirname, 'conversation'));
+    if (!defaultFile) return { error: 'Default conversation archive not found', data: null };
+    return await openArchive(defaultFile);
   } catch (err) {
     return { error: err.message };
   }
 });
 
+
+ipcMain.handle('asset:readImage', async (event, url) => {
+  try {
+    return { url: await imageDataUrl(assetByUrl(currentAssets, url)) };
+  } catch (error) {
+    return { error: error.message };
+  }
+});
 
 ipcMain.on('menu:setImportVisible', (event, isVisible) => {
   if (!importMenuItem) return;

@@ -7,7 +7,8 @@
   "license": "Apache-2.0",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "test": "node --test *.test.js"
   },
   "devDependencies": {
     "electron": "^27.0.0",

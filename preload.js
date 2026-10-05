@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  readImage: (url) => ipcRenderer.invoke('asset:readImage', url),
   openFile: async () => {
     return await ipcRenderer.invoke('dialog:openFile');
   },
@@ -45,17 +46,5 @@ contextBridge.exposeInMainWorld('api', {
   },
   saveHtml: async (html) => {
     return await ipcRenderer.invoke('dialog:saveHtml', html);
-  }
-});
-
-contextBridge.exposeInMainWorld('apiExtra', {
-  pickFile: async () => {
-    return await ipcRenderer.invoke('dialog:pickFile');
-  },
-  readFile: async (filePath) => {
-    return await ipcRenderer.invoke('file:readFile', filePath);
-  },
-  hasDefault: async () => {
-    return await ipcRenderer.invoke('file:hasDefault');
   }
 });
